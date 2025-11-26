@@ -5,10 +5,16 @@ import {
   isOurMenuItem,
   MENU_ID_PREFIX,
 } from './context-menu';
+import * as appDefaults from './app-defaults';
 
 // Mock Chrome contextMenus API
 const mockRemoveAll = vi.fn();
 const mockCreate = vi.fn();
+
+// Mock app-defaults module
+vi.mock('./app-defaults', () => ({
+  getOpenInTitle: vi.fn(),
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -25,29 +31,33 @@ beforeEach(() => {
 });
 
 describe('registerContextMenus', () => {
-  const mockDefaults = {
-    xlsx: { name: 'Microsoft Excel', bundleId: 'com.microsoft.excel' },
-    docx: { name: 'Microsoft Word', bundleId: 'com.microsoft.word' },
-    pptx: { name: 'Microsoft PowerPoint', bundleId: 'com.microsoft.powerpoint' },
-    txt: { name: 'TextEdit', bundleId: 'com.apple.textedit' },
-    pdf: { name: 'Preview', bundleId: 'com.apple.preview' },
-  };
-
   it('should remove existing menus first', async () => {
-    await registerContextMenus(mockDefaults);
+    vi.mocked(appDefaults.getOpenInTitle).mockReturnValue('Open in desktop app');
+    await registerContextMenus();
 
     expect(mockRemoveAll).toHaveBeenCalled();
   });
 
   it('should create menu for each site type', async () => {
-    await registerContextMenus(mockDefaults);
+    vi.mocked(appDefaults.getOpenInTitle).mockReturnValue('Open in desktop app');
+    await registerContextMenus();
 
     // Should create 3 menus (Sheets, Docs, Slides)
     expect(mockCreate).toHaveBeenCalledTimes(3);
   });
 
   it('should use correct app names in menu titles', async () => {
-    await registerContextMenus(mockDefaults);
+    // Mock getOpenInTitle to return appropriate titles based on file type
+    vi.mocked(appDefaults.getOpenInTitle).mockImplementation((fileType) => {
+      const titles: Record<string, string> = {
+        xlsx: 'Open in Microsoft Excel',
+        docx: 'Open in Microsoft Word',
+        pptx: 'Open in Microsoft PowerPoint',
+      };
+      return titles[fileType] || 'Open in desktop app';
+    });
+
+    await registerContextMenus();
 
     // Find the Excel menu
     const excelCall = mockCreate.mock.calls.find(
@@ -72,15 +82,9 @@ describe('registerContextMenus', () => {
   });
 
   it('should use "desktop app" when no default app is set', async () => {
-    const emptyDefaults = {
-      xlsx: { name: '', bundleId: '' },
-      docx: { name: '', bundleId: '' },
-      pptx: { name: '', bundleId: '' },
-      txt: { name: '', bundleId: '' },
-      pdf: { name: '', bundleId: '' },
-    };
+    vi.mocked(appDefaults.getOpenInTitle).mockReturnValue('Open in desktop app');
 
-    await registerContextMenus(emptyDefaults);
+    await registerContextMenus();
 
     const xlsxCall = mockCreate.mock.calls.find(
       (call) => call[0].id === `${MENU_ID_PREFIX}-xlsx`
@@ -90,13 +94,14 @@ describe('registerContextMenus', () => {
   });
 
   it('should set correct context and URL patterns', async () => {
-    await registerContextMenus(mockDefaults);
+    vi.mocked(appDefaults.getOpenInTitle).mockReturnValue('Open in desktop app');
+    await registerContextMenus();
 
     const xlsxCall = mockCreate.mock.calls.find(
       (call) => call[0].id === `${MENU_ID_PREFIX}-xlsx`
     );
     expect(xlsxCall).toBeDefined();
-    expect(xlsxCall![0].contexts).toEqual(['page']);
+    expect(xlsxCall![0].contexts).toEqual(['page', 'frame', 'selection', 'editable']);
     expect(xlsxCall![0].documentUrlPatterns).toContain(
       'https://docs.google.com/spreadsheets/d/*'
     );

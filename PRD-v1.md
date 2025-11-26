@@ -98,8 +98,8 @@ Communicates with the native host to open files in desktop apps.
 #### Feature: File Open Request
 - **Description**: Request native host to open downloaded file
 - **Inputs**: File path, file type
-- **Outputs**: Success/failure + temp path or error
-- **Behavior**: Send `open` action, host moves to temp, sets read-only, opens in app
+- **Outputs**: Success/failure
+- **Behavior**: Send `open` action, host opens file directly from Downloads folder
 
 ### Capability: Context Menu
 
@@ -133,17 +133,11 @@ The Go binary that interfaces with the OS to open files.
 - **Outputs**: App name and bundle ID
 - **Behavior**: Use Launch Services or `open -b` to resolve defaults
 
-#### Feature: File Preparation
-- **Description**: Move file to temp directory and set permissions
-- **Inputs**: Source path (Downloads folder)
-- **Outputs**: Temp path
-- **Behavior**: Move to `os.TempDir()`, chmod 0444 (read-only for "Save As" behavior)
-
 #### Feature: App Launch
 - **Description**: Open file in default application
-- **Inputs**: Temp file path
+- **Inputs**: File path (in Downloads folder)
 - **Outputs**: Success/failure
-- **Behavior**: Execute `open {filepath}`, preserve quarantine attribute
+- **Behavior**: Execute `open {filepath}` to launch default application
 
 #### Feature: Error Reporting
 - **Description**: Return structured errors to extension
@@ -245,7 +239,6 @@ project-root/
 - **Exports**:
   - `GetDefaultApp(ext string) (AppInfo, error)`
   - `OpenWithDefault(path string) error`
-  - `GetTempDir() string`
 
 ### Module: handlers (Native Host)
 - **Maps to capability**: Native Host Operations (business logic)
@@ -321,7 +314,7 @@ No dependencies - these are built first.
   - Test: Query real system, verify app names
 
 - [ ] Implement open handler (depends on: [messaging, platform])
-  - Acceptance: Moves file to temp, sets 0444, opens in app
+  - Acceptance: Opens file directly from Downloads in default app
   - Test: End-to-end with test file
 
 - [ ] Implement main.go message loop (depends on: [handlers])
@@ -446,7 +439,7 @@ No dependencies - these are built first.
 #### Native Host - Open Handler
 **Happy path**:
 - Valid xlsx file in Downloads
-- Expected: Moved to temp, chmod 0444, opens in Excel
+- Expected: Opens directly in Excel from Downloads folder
 
 **Edge cases**:
 - File with spaces in name
@@ -530,11 +523,11 @@ No dependencies - these are built first.
 - **Mitigation**: Test on all target browsers early
 - **Fallback**: Use known Downloads folder path + filename
 
-**Risk**: Read-only permission (0444) causes app warnings
-- **Impact**: Medium (UX friction)
-- **Likelihood**: Medium (app-dependent)
-- **Mitigation**: Test with Excel, Word, Numbers, Pages
-- **Fallback**: Use different permission or file flag approach
+**Risk**: User expects "Save As" behavior but file saves to Downloads
+- **Impact**: Low (minor UX confusion)
+- **Likelihood**: Medium
+- **Mitigation**: Document behavior clearly
+- **Fallback**: Users can use File > Save As manually
 
 ### Dependency Risks
 

@@ -65,7 +65,7 @@ sudo installer -pkg dist/reclaim-openwith-1.0.0.pkg -target /
 2. On right-click, it shows a context menu with the default app for that file type
 3. When clicked, the extension:
    - Exports the document using Google's export API
-   - Downloads the file to a temporary location
+   - Downloads the file to your Downloads folder
    - Sends the file path to the native host
    - The native host opens the file with your default application
 

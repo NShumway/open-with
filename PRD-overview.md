@@ -30,7 +30,7 @@ This extension reclaims user control: right-click → "Open With" for known docu
 - **V1.5:** Expand to additional cloud services via user-provided OAuth or authenticated sessions
 - **V2:** Content discovery modal to extract tables, text, and clean PDFs from any webpage — including bypassing view-only restrictions
 - Use system default applications for each file type (respects user preferences)
-- Downloaded file triggers "Save As" behavior on close (not overwrite)
+- Files remain in Downloads folder for user to manage
 - Works on any Chromium-based browser (Chrome, Brave, Edge, Arc, etc.)
 
 ## Non-Goals (V1)
@@ -52,9 +52,9 @@ This extension reclaims user control: right-click → "Open With" for known docu
 2. User right-clicks anywhere on the page
 3. Context menu shows "Open in [App Name]" (e.g., "Open in Microsoft Excel")
 4. User clicks the menu item
-5. File downloads, moves to temp directory, opens in the desktop app
+5. File downloads to Downloads folder and opens in the desktop app
 6. User edits the document
-7. On save/close, the app prompts "Save As" (not overwrite)
+7. User manages the file in their Downloads folder
 
 **Supported Sites (V1):**
 
@@ -178,9 +178,9 @@ clone.querySelectorAll(adSelectors.join(',')).forEach(el => el.remove());
 
 ### File Handling
 
-- File downloads to the user's Downloads folder (Chrome API limitation)
-- Native host moves file to system temp directory (`/tmp/` or `os.TempDir()`)
-- File is set to read-only (mode 0444) to force "Save As" behavior
+- File downloads to the user's Downloads folder
+- Native host opens the file directly from Downloads
+- User manages the file themselves (keep, move, or delete)
 - macOS quarantine attribute is preserved (set automatically by Chrome on download)
 
 ---
@@ -207,9 +207,8 @@ clone.querySelectorAll(adSelectors.join(',')).forEach(el => el.remove());
 │                    Native Messaging Host (Go)                   │
 │                                                                 │
 │  • Receive file path from extension                             │
-│  • Move file from Downloads to temp directory                   │
-│  • Set file permissions to read-only (0444)                     │
 │  • Query system default app for file type                       │
+│  • Open file directly from Downloads folder                     │
 │  • Launch app with file                                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -305,7 +304,6 @@ The native host is written in **Go** for cross-platform compatibility. Go compil
 |------|-------|---------|-------|
 | Get default app | `LSCopyDefaultRoleHandlerForContentType` via CGo | Registry query (`assoc`/`ftype`) | `xdg-mime query default` |
 | Open file with app | `open` command | `ShellExecute` | `xdg-open` |
-| Temp directory | `os.TempDir()` (NSTemporaryDirectory) | `os.TempDir()` (%TEMP%) | `os.TempDir()` (/tmp) |
 | No default app handling | Reveal in Finder, prompt user | `OpenAs_RunDLL` dialog | `xdg-open` fallback |
 
 ### Host Manifest
@@ -381,8 +379,7 @@ Installed to:
 
 ```json
 {
-  "success": true,
-  "tempPath": "/var/folders/xx/.../spreadsheet.xlsx"
+  "success": true
 }
 ```
 
@@ -412,13 +409,10 @@ Or on error:
 #### open
 
 1. Validate file exists at provided path
-2. Generate temp path: `os.TempDir() + original_filename`
-3. Move file from Downloads to temp directory
-4. Set file permissions to 0444 (read-only)
-5. Query system default app for file type
-6. If no default app: return error with `no_default_app` code
-7. Open file with default app
-8. Return success/failure
+2. Query system default app for file type
+3. If no default app: return error with `no_default_app` code
+4. Open file with default app directly from Downloads
+5. Return success/failure
 
 ---
 
@@ -456,7 +450,7 @@ Or on error:
 ## Security Considerations
 
 - Native host only accepts messages from the specific extension ID
-- File operations restricted to moving from Downloads to temp
+- File operations restricted to opening files from Downloads folder
 - Quarantine attribute preserved for Gatekeeper protection
 - No network access in native host
 - No arbitrary command execution
@@ -472,7 +466,7 @@ Or on error:
 - **Chart data extraction**: Parse Chart.js, D3, Highcharts data structures
 - **Bidirectional sync**: Save changes back to cloud service
 - **Keyboard shortcut**: Open current document without right-click
-- **Auto-cleanup**: Option to delete temp files after app closes
+- **Auto-cleanup**: Option to delete downloaded files after app closes
 
 ---
 
@@ -481,7 +475,7 @@ Or on error:
 ### V1
 - Context menu appears reliably on Google Docs, Sheets, and Slides
 - File opens in correct default application within 3 seconds of click
-- Application prompts "Save As" on first save (not overwrite to temp)
+- Files open directly from Downloads folder
 - Works across Chrome, Brave, Edge, and other Chromium browsers
 
 ### V1.5

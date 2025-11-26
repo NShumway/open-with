@@ -52,7 +52,7 @@ For each test case:
 3. [ ] Verify context menu shows "Open in [App Name]"
 4. [ ] Click the menu item
 5. [ ] Verify badge shows "..." (progress indicator)
-6. [ ] Verify file downloads (check ~/Downloads or temp)
+6. [ ] Verify file downloads to ~/Downloads
 7. [ ] Verify correct application opens
 8. [ ] Verify file content matches original document
 9. [ ] Verify badge clears on success
@@ -161,7 +161,6 @@ cat /tmp/reclaim-openwith.log
 - [ ] Extension only requests necessary permissions
 - [ ] No data sent to external servers
 - [ ] Native host validates all input
-- [ ] Temp files cleaned up appropriately
 - [ ] No secrets in source code
 
 ## Sign-Off
