@@ -1,0 +1,9 @@
+{
+  "name": "com.reclaim.openwith",
+  "description": "Reclaim: Open With native helper",
+  "path": "/usr/local/bin/reclaim-openwith",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://EXTENSION_ID_PLACEHOLDER/"
+  ]
+}

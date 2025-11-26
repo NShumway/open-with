@@ -4,298 +4,563 @@
 
 ---
 
-## Overview
+## Problem Statement
 
-V1 delivers a single-click experience to open Google Workspace documents in desktop applications. Right-click a Google Doc, Sheet, or Slide → "Open in [App]" → file downloads and opens in the user's default application.
+Users viewing Google Docs, Sheets, or Slides must manually navigate File → Download → choose format → wait → find file → open. This friction discourages local editing, trapping users in browser-based workflows even when they prefer desktop applications.
 
-## Goals
+## Target Users
 
-- One-click export from Google Docs, Sheets, and Slides
-- Opens in system default application for each file type
-- File set to read-only to trigger "Save As" behavior (not overwrite)
-- Works on Chrome, Brave, Edge, Arc, and other Chromium browsers
-- macOS only (architecture supports cross-platform, but V1 ships macOS due to testing constraints)
-
-## Non-Goals
-
-- Services requiring OAuth (Office 365, Zoho, etc.) — deferred to V1.5
-- Content extraction from arbitrary pages — deferred to V2
-- Bypassing view-only restrictions — deferred to V2
-- App picker (use system default only)
-- Auto-cleanup of downloaded files
-- Windows/Linux support
-
----
-
-## User Experience
-
-**Flow:**
-
-1. User is viewing a Google Doc, Sheet, or Slide
-2. User right-clicks anywhere on the page
-3. Context menu shows "Open in [App Name]" (e.g., "Open in Microsoft Excel")
-4. User clicks the menu item
-5. File downloads, moves to temp directory, opens in the desktop app
-6. User edits the document
-7. On save/close, the app prompts "Save As" (not overwrite)
-
-**Supported Sites:**
-
-| Service | Document Types | Export Format |
-|---------|---------------|---------------|
-| Google Sheets | Spreadsheets | .xlsx |
-| Google Docs | Documents | .docx |
-| Google Slides | Presentations | .pptx |
-
-**Error Handling:**
-
-- **403 (view-only with downloads disabled):** Show notification: "The document owner has disabled downloads for this file."
-- **No default app:** Show notification explaining how to set a default app, offer to reveal file in Finder.
-- **Download timeout (60s):** Show error suggesting manual download via File → Download.
-
----
-
-## Technical Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Extension (MV3)                         │
-│                                                                 │
-│  ┌─────────────┐    ┌─────────────┐    ┌──────────────────┐   │
-│  │ contextMenus│───►│  downloads  │───►│  nativeMessaging │   │
-│  │   API       │    │    API      │    │       API        │   │
-│  └─────────────┘    └─────────────┘    └────────┬─────────┘   │
-└─────────────────────────────────────────────────┼──────────────┘
-                                                  │ JSON/stdio
-                                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Native Messaging Host (Go)                   │
-│                                                                 │
-│  • Receive file path from extension                             │
-│  • Move file from Downloads to temp directory                   │
-│  • Set file permissions to read-only (0444)                     │
-│  • Query system default app for file type                       │
-│  • Launch app with file                                         │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Extension Specification
-
-### Manifest Permissions
-
-```json
-{
-  "permissions": [
-    "contextMenus",
-    "downloads",
-    "nativeMessaging",
-    "activeTab",
-    "scripting"
-  ],
-  "host_permissions": [
-    "https://docs.google.com/*"
-  ]
-}
-```
-
-### Site Registry
-
-```typescript
-interface SiteConfig {
-  name: string;
-  urlPatterns: string[];           // Match patterns for manifest + runtime
-  documentIdRegex: RegExp;         // Extract document ID from URL
-  exportUrl: (id: string) => string;  // Generate export URL
-  fileType: 'xlsx' | 'docx' | 'pptx';
-}
-```
-
-| Service | URL Pattern | Export URL |
-|---------|-------------|------------|
-| Google Sheets | `docs.google.com/spreadsheets/d/*` | `https://docs.google.com/spreadsheets/d/{id}/export?format=xlsx` |
-| Google Docs | `docs.google.com/document/d/*` | `https://docs.google.com/document/d/{id}/export?format=docx` |
-| Google Slides | `docs.google.com/presentation/d/*` | `https://docs.google.com/presentation/d/{id}/export?format=pptx` |
-
-### Context Menu Behavior
-
-1. On extension install, query native host for default app names for each file type
-2. Create context menus with dynamic labels:
-   - "Open in Microsoft Excel" (if Excel is default for .xlsx)
-   - "Open in Numbers" (if Numbers is default for .xlsx)
-3. Menu items only appear on matching URL patterns (documentUrlPatterns)
-
-### Download Flow
-
-1. Construct export URL based on document type and ID
-2. Call `chrome.downloads.download()` with generated filename
-3. Listen for download completion via `chrome.downloads.onChanged`
-4. On completion, query `chrome.downloads.search()` for file path
-5. Send file path to native host via `chrome.runtime.sendNativeMessage()`
-
----
-
-## Native Host Specification
-
-### Implementation
-
-Written in **Go** for cross-platform compatibility. Single static binary with no runtime dependencies.
-
-**macOS Implementation:**
-
-| Task | Approach |
-|------|----------|
-| Get default app | `open -b` or Launch Services API |
-| Open file with app | `open` command |
-| Temp directory | `os.TempDir()` |
-| No default app | Reveal in Finder, show notification |
-
-### Host Manifest
-
-Filename: `com.reclaim.openwith.json`
-
-Installed to (macOS):
-- Chrome: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`
-- Brave: `~/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/`
-- Edge: `~/Library/Application Support/Microsoft Edge/NativeMessagingHosts/`
-- Chromium: `~/Library/Application Support/Chromium/NativeMessagingHosts/`
-
-```json
-{
-  "name": "com.reclaim.openwith",
-  "description": "Reclaim: Open With native helper",
-  "path": "/usr/local/bin/reclaim-openwith",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://EXTENSION_ID/"
-  ]
-}
-```
-
-### Message Protocol
-
-**Request: Get Default Apps**
-```json
-{
-  "action": "getDefaults"
-}
-```
-
-**Response: Default Apps**
-```json
-{
-  "success": true,
-  "defaults": {
-    "xlsx": { "name": "Microsoft Excel", "bundleId": "com.microsoft.Excel" },
-    "docx": { "name": "Microsoft Word", "bundleId": "com.microsoft.Word" },
-    "pptx": { "name": "Microsoft PowerPoint", "bundleId": "com.microsoft.Powerpoint" }
-  }
-}
-```
-
-**Request: Open File**
-```json
-{
-  "action": "open",
-  "filePath": "/Users/user/Downloads/spreadsheet.xlsx",
-  "fileType": "xlsx"
-}
-```
-
-**Response: Open Result**
-```json
-{
-  "success": true,
-  "tempPath": "/var/folders/xx/.../spreadsheet.xlsx"
-}
-```
-
-**Error Response**
-```json
-{
-  "success": false,
-  "error": "no_default_app",
-  "fileType": "xlsx"
-}
-```
-
-### Native Host Operations
-
-**getDefaults:**
-1. Query system for default app for .xlsx, .docx, .pptx
-2. Resolve to application name
-3. Return mapping
-
-**open:**
-1. Validate file exists at provided path
-2. Generate temp path: `os.TempDir() + original_filename`
-3. Move file from Downloads to temp directory
-4. Set file permissions to 0444 (read-only)
-5. Query system default app for file type
-6. If no default app: return error with `no_default_app` code
-7. Open file with default app
-8. Return success/failure
-
----
-
-## Installation
-
-### User Steps
-
-1. Install the extension (Chrome Web Store or sideload)
-2. Run the installer package (.pkg) which:
-   - Installs native host binary to `/usr/local/bin/reclaim-openwith`
-   - Installs host manifests to all supported browser locations
-   - Sets correct permissions
-
-### Installer Package Contents
-
-```
-/usr/local/bin/
-  └── reclaim-openwith
-
-~/Library/Application Support/Google/Chrome/NativeMessagingHosts/
-  └── com.reclaim.openwith.json
-
-~/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts/
-  └── com.reclaim.openwith.json
-
-~/Library/Application Support/Microsoft Edge/NativeMessagingHosts/
-  └── com.reclaim.openwith.json
-
-~/Library/Application Support/Chromium/NativeMessagingHosts/
-  └── com.reclaim.openwith.json
-```
-
----
-
-## Security Considerations
-
-- Native host only accepts messages from the specific extension ID
-- File operations restricted to moving from Downloads to temp
-- Quarantine attribute preserved for Gatekeeper protection
-- No network access in native host
-- No arbitrary command execution
-
----
+- **Power users** who prefer native apps (Excel over Sheets, Word over Docs)
+- **Offline workers** who need local copies for travel/poor connectivity
+- **Cross-tool workflows** — users who need to paste spreadsheet data into other apps
 
 ## Success Metrics
 
-- Context menu appears reliably on Google Docs, Sheets, and Slides
-- File opens in correct default application within 3 seconds of click
-- Application prompts "Save As" on first save (not overwrite to temp)
-- Works across Chrome, Brave, Edge, and other Chromium browsers
+- Context menu appears on 100% of Google Docs/Sheets/Slides pages
+- File opens in default app within 3 seconds of click
+- Zero user configuration required after install
+- Works across Chrome, Brave, Edge, Arc browsers
 
 ---
 
-## Open Questions (Resolved)
+## Functional Decomposition
 
-### Large files?
-60-second timeout with visual feedback. Google's export API has its own limits (~10MB for Sheets).
+### Capability: Site Detection
 
-### Progress indicator?
-Badge on extension icon during download. Desktop notification only on errors. Success = app opens (self-evident).
+Determines if the current page is a supported Google Workspace document and extracts the document ID.
 
-### No default app?
-macOS: Show notification explaining how to set default, offer to reveal file in Finder.
+#### Feature: URL Pattern Matching
+- **Description**: Match current URL against known Google Workspace patterns
+- **Inputs**: Current tab URL
+- **Outputs**: Boolean (is supported site) + document type (sheets/docs/slides)
+- **Behavior**: Regex match against `docs.google.com/(spreadsheets|document|presentation)/d/{id}`
+
+#### Feature: Document ID Extraction
+- **Description**: Extract the document ID from the URL for export URL construction
+- **Inputs**: Matched URL
+- **Outputs**: Document ID string
+- **Behavior**: Capture group from regex, validate format (alphanumeric + hyphens)
+
+### Capability: Export URL Construction
+
+Builds the download URL for Google's export API.
+
+#### Feature: Format Selection
+- **Description**: Map document type to appropriate export format
+- **Inputs**: Document type (sheets/docs/slides)
+- **Outputs**: File extension and MIME type
+- **Behavior**: sheets→xlsx, docs→docx, slides→pptx
+
+#### Feature: URL Generation
+- **Description**: Construct the full export URL
+- **Inputs**: Document ID, export format
+- **Outputs**: Complete export URL
+- **Behavior**: Template: `https://docs.google.com/{type}/d/{id}/export?format={format}`
+
+### Capability: File Download
+
+Downloads the exported file using Chrome's downloads API.
+
+#### Feature: Download Initiation
+- **Description**: Trigger file download via Chrome API
+- **Inputs**: Export URL, suggested filename
+- **Outputs**: Download ID
+- **Behavior**: Call `chrome.downloads.download()`, handle auth via existing session cookies
+
+#### Feature: Download Monitoring
+- **Description**: Track download progress and completion
+- **Inputs**: Download ID
+- **Outputs**: File path on completion, error on failure
+- **Behavior**: Listen to `chrome.downloads.onChanged`, resolve on complete, reject on error/timeout
+
+#### Feature: Error Handling
+- **Description**: Handle download failures gracefully
+- **Inputs**: Error type (403, timeout, network)
+- **Outputs**: User-facing error message
+- **Behavior**: 403 → "Downloads disabled by owner", timeout → "Try manual download", network → "Check connection"
+
+### Capability: Native Messaging
+
+Communicates with the native host to open files in desktop apps.
+
+#### Feature: Host Connection
+- **Description**: Establish connection to native messaging host
+- **Inputs**: Host name (`com.reclaim.openwith`)
+- **Outputs**: Connection status
+- **Behavior**: Call `chrome.runtime.connectNative()`, handle connection errors
+
+#### Feature: Default App Query
+- **Description**: Query native host for default applications per file type
+- **Inputs**: None (queries all supported types)
+- **Outputs**: Map of file extension → app name
+- **Behavior**: Send `getDefaults` action, receive app names for context menu labels
+
+#### Feature: File Open Request
+- **Description**: Request native host to open downloaded file
+- **Inputs**: File path, file type
+- **Outputs**: Success/failure + temp path or error
+- **Behavior**: Send `open` action, host moves to temp, sets read-only, opens in app
+
+### Capability: Context Menu
+
+Provides the right-click "Open in [App]" menu item.
+
+#### Feature: Menu Registration
+- **Description**: Register context menu items on extension install
+- **Inputs**: Default app names from native host
+- **Outputs**: Registered menu IDs
+- **Behavior**: Create menu per document type with dynamic label ("Open in Excel")
+
+#### Feature: Menu Visibility
+- **Description**: Show/hide menu based on current URL
+- **Inputs**: Current tab URL
+- **Outputs**: Menu visibility state
+- **Behavior**: Use `documentUrlPatterns` to limit to Google Workspace URLs
+
+#### Feature: Menu Click Handler
+- **Description**: Handle user clicking the context menu item
+- **Inputs**: Menu item ID, tab info
+- **Outputs**: Triggers download flow
+- **Behavior**: Extract doc ID → build export URL → download → send to native host
+
+### Capability: Native Host Operations
+
+The Go binary that interfaces with the OS to open files.
+
+#### Feature: Default App Resolution
+- **Description**: Query macOS for default application per file type
+- **Inputs**: File extension
+- **Outputs**: App name and bundle ID
+- **Behavior**: Use Launch Services or `open -b` to resolve defaults
+
+#### Feature: File Preparation
+- **Description**: Move file to temp directory and set permissions
+- **Inputs**: Source path (Downloads folder)
+- **Outputs**: Temp path
+- **Behavior**: Move to `os.TempDir()`, chmod 0444 (read-only for "Save As" behavior)
+
+#### Feature: App Launch
+- **Description**: Open file in default application
+- **Inputs**: Temp file path
+- **Outputs**: Success/failure
+- **Behavior**: Execute `open {filepath}`, preserve quarantine attribute
+
+#### Feature: Error Reporting
+- **Description**: Return structured errors to extension
+- **Inputs**: Error condition
+- **Outputs**: JSON error response
+- **Behavior**: `no_default_app`, `file_not_found`, `permission_denied` error codes
+
+---
+
+## Structural Decomposition
+
+```
+project-root/
+├── extension/                    # Chrome Extension (MV3)
+│   ├── src/
+│   │   ├── background/           # Service worker
+│   │   │   ├── index.ts          # Main entry, event listeners
+│   │   │   ├── site-registry.ts  # URL patterns, export URL builders
+│   │   │   ├── downloader.ts     # Download management
+│   │   │   ├── native-client.ts  # Native messaging wrapper
+│   │   │   └── context-menu.ts   # Menu registration and handlers
+│   │   └── types/
+│   │       └── messages.ts       # Shared type definitions
+│   ├── manifest.json
+│   └── package.json
+│
+├── native-host/                  # Go Native Messaging Host
+│   ├── cmd/
+│   │   └── reclaim-openwith/
+│   │       └── main.go           # Entry point, message loop
+│   ├── internal/
+│   │   ├── messaging/
+│   │   │   ├── protocol.go       # JSON message parsing
+│   │   │   └── stdio.go          # Length-prefixed I/O
+│   │   ├── platform/
+│   │   │   ├── platform.go       # Interface definition
+│   │   │   ├── darwin.go         # macOS implementation
+│   │   │   └── darwin_test.go
+│   │   └── handlers/
+│   │       ├── defaults.go       # getDefaults handler
+│   │       └── open.go           # open handler
+│   ├── go.mod
+│   └── go.sum
+│
+├── installer/                    # macOS installer
+│   ├── scripts/
+│   │   ├── postinstall           # Install manifests
+│   │   └── preinstall            # Cleanup old versions
+│   └── build.sh                  # pkgbuild script
+│
+└── docs/
+    └── PRD-v1.md
+```
+
+### Module: background (Extension Service Worker)
+- **Maps to capability**: Site Detection, Export URL Construction, Context Menu
+- **Responsibility**: Orchestrate the export flow from menu click to native host
+- **Exports**:
+  - Event listeners for `chrome.contextMenus.onClicked`
+  - Event listeners for `chrome.runtime.onInstalled`
+
+### Module: site-registry
+- **Maps to capability**: Site Detection, Export URL Construction
+- **Responsibility**: Define supported sites and their export URL patterns
+- **Exports**:
+  - `getSiteConfig(url: string): SiteConfig | null`
+  - `buildExportUrl(config: SiteConfig, docId: string): string`
+
+### Module: downloader
+- **Maps to capability**: File Download
+- **Responsibility**: Manage Chrome downloads API interactions
+- **Exports**:
+  - `downloadFile(url: string, filename: string): Promise<string>` (returns file path)
+
+### Module: native-client
+- **Maps to capability**: Native Messaging
+- **Responsibility**: Communicate with native host
+- **Exports**:
+  - `getDefaults(): Promise<DefaultApps>`
+  - `openFile(path: string, type: string): Promise<OpenResult>`
+
+### Module: context-menu
+- **Maps to capability**: Context Menu
+- **Responsibility**: Register and handle context menu
+- **Exports**:
+  - `registerMenus(defaults: DefaultApps): void`
+  - `handleMenuClick(info: MenuInfo, tab: Tab): Promise<void>`
+
+### Module: messaging (Native Host)
+- **Maps to capability**: Native Host Operations (protocol)
+- **Responsibility**: Parse/serialize native messaging protocol
+- **Exports**:
+  - `ReadMessage() (Message, error)`
+  - `WriteMessage(msg Message) error`
+
+### Module: platform (Native Host)
+- **Maps to capability**: Native Host Operations (OS interface)
+- **Responsibility**: Abstract OS-specific operations
+- **Exports**:
+  - `GetDefaultApp(ext string) (AppInfo, error)`
+  - `OpenWithDefault(path string) error`
+  - `GetTempDir() string`
+
+### Module: handlers (Native Host)
+- **Maps to capability**: Native Host Operations (business logic)
+- **Responsibility**: Implement getDefaults and open actions
+- **Exports**:
+  - `HandleGetDefaults() Response`
+  - `HandleOpen(req OpenRequest) Response`
+
+---
+
+## Dependency Graph
+
+### Foundation Layer (Phase 0)
+No dependencies - these are built first.
+
+- **types/messages.ts**: Shared TypeScript types for messages
+- **messaging (Go)**: Native messaging protocol I/O
+- **platform (Go)**: OS abstraction interface
+
+### Data Layer (Phase 1)
+- **site-registry**: Depends on [types/messages]
+- **native-client**: Depends on [types/messages]
+- **handlers (Go)**: Depends on [messaging, platform]
+
+### Core Layer (Phase 2)
+- **downloader**: Depends on [types/messages]
+- **context-menu**: Depends on [site-registry, native-client]
+
+### Integration Layer (Phase 3)
+- **background/index.ts**: Depends on [context-menu, downloader, native-client, site-registry]
+- **main.go**: Depends on [messaging, handlers]
+
+### Distribution Layer (Phase 4)
+- **installer**: Depends on [main.go compiled binary]
+- **manifest.json**: Depends on [all extension modules]
+
+---
+
+## Implementation Roadmap
+
+### Phase 0: Foundation
+**Goal**: Establish type definitions and low-level I/O
+
+**Entry Criteria**: Clean repository with build tooling configured
+
+**Tasks**:
+- [ ] Define TypeScript message types (depends on: none)
+  - Acceptance: Types compile, match native host protocol
+  - Test: Type checking passes
+
+- [ ] Implement Go native messaging I/O (depends on: none)
+  - Acceptance: Can read/write length-prefixed JSON
+  - Test: Unit tests with mock stdin/stdout
+
+- [ ] Implement macOS platform abstraction (depends on: none)
+  - Acceptance: GetDefaultApp returns real app names
+  - Test: Integration test on macOS
+
+**Exit Criteria**: All foundation modules pass unit tests
+
+**Delivers**: Buildable but non-functional skeleton
+
+---
+
+### Phase 1: Native Host Complete
+**Goal**: Fully functional native host binary
+
+**Entry Criteria**: Phase 0 complete
+
+**Tasks**:
+- [ ] Implement getDefaults handler (depends on: [messaging, platform])
+  - Acceptance: Returns correct default apps for xlsx/docx/pptx
+  - Test: Query real system, verify app names
+
+- [ ] Implement open handler (depends on: [messaging, platform])
+  - Acceptance: Moves file to temp, sets 0444, opens in app
+  - Test: End-to-end with test file
+
+- [ ] Implement main.go message loop (depends on: [handlers])
+  - Acceptance: Processes stdin messages, writes responses
+  - Test: Integration test with mock extension
+
+**Exit Criteria**: Native host can be invoked manually and opens files
+
+**Delivers**: Working native host binary (not yet integrated)
+
+---
+
+### Phase 2: Extension Core
+**Goal**: Extension modules without UI integration
+
+**Entry Criteria**: Phase 1 complete (native host works)
+
+**Tasks**:
+- [ ] Implement site-registry (depends on: [types])
+  - Acceptance: Correctly identifies Google Workspace URLs
+  - Test: Unit tests with various URL patterns
+
+- [ ] Implement native-client (depends on: [types])
+  - Acceptance: Communicates with native host
+  - Test: Integration test with real native host
+
+- [ ] Implement downloader (depends on: [types])
+  - Acceptance: Downloads file, returns path on complete
+  - Test: Mock Chrome API, verify flow
+
+**Exit Criteria**: All extension modules pass unit tests
+
+**Delivers**: Tested modules ready for integration
+
+---
+
+### Phase 3: Integration
+**Goal**: End-to-end working extension
+
+**Entry Criteria**: Phase 2 complete
+
+**Tasks**:
+- [ ] Implement context-menu registration (depends on: [native-client, site-registry])
+  - Acceptance: Menu appears on Google Docs pages
+  - Test: Manual verification in browser
+
+- [ ] Implement menu click handler (depends on: [context-menu, downloader, native-client])
+  - Acceptance: Click → download → open in app
+  - Test: End-to-end manual test
+
+- [ ] Implement background service worker (depends on: [all extension modules])
+  - Acceptance: Extension loads without errors
+  - Test: Load unpacked extension, verify functionality
+
+**Exit Criteria**: Right-click on Google Sheet opens in Excel
+
+**Delivers**: Functional extension (dev mode)
+
+---
+
+### Phase 4: Distribution
+**Goal**: Installable packages for end users
+
+**Entry Criteria**: Phase 3 complete
+
+**Tasks**:
+- [ ] Build native host binary (depends on: [main.go])
+  - Acceptance: Single static binary, no dependencies
+  - Test: Run on clean macOS system
+
+- [ ] Create installer package (depends on: [binary])
+  - Acceptance: .pkg installs binary and manifests
+  - Test: Install on clean system, verify paths
+
+- [ ] Finalize manifest.json (depends on: [all extension modules])
+  - Acceptance: Extension ID stable, permissions minimal
+  - Test: Load in Chrome, verify permissions prompt
+
+**Exit Criteria**: User can install .pkg and load extension
+
+**Delivers**: V1 release candidate
+
+---
+
+## Test Strategy
+
+### Test Pyramid
+
+```
+        /\
+       /E2E\       ← 10% (Full flow: menu click to app open)
+      /------\
+     /Integration\ ← 30% (Native host + extension, Chrome APIs)
+    /------------\
+   /  Unit Tests  \ ← 60% (Site registry, URL builders, handlers)
+  /----------------\
+```
+
+### Coverage Requirements
+- Line coverage: 80% minimum
+- Branch coverage: 70% minimum
+- All error paths must have tests
+
+### Critical Test Scenarios
+
+#### Site Registry
+**Happy path**:
+- Google Sheets URL → returns sheets config
+- Google Docs URL → returns docs config
+- Expected: Correct document type and ID extraction
+
+**Edge cases**:
+- URL with query params (`?usp=sharing`)
+- URL with fragment (`#gid=0`)
+- Expected: Still extracts correct ID
+
+**Error cases**:
+- Non-Google URL
+- Malformed Google URL
+- Expected: Returns null, no crash
+
+#### Native Host - Open Handler
+**Happy path**:
+- Valid xlsx file in Downloads
+- Expected: Moved to temp, chmod 0444, opens in Excel
+
+**Edge cases**:
+- File with spaces in name
+- Very long filename
+- Expected: Handles correctly
+
+**Error cases**:
+- File doesn't exist
+- No default app for type
+- Expected: Returns appropriate error code
+
+#### Download Flow
+**Happy path**:
+- Public Google Sheet
+- Expected: Downloads within 10 seconds
+
+**Error cases**:
+- 403 (downloads disabled)
+- Network timeout
+- Expected: User-friendly error message
+
+---
+
+## Architecture
+
+### System Components
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Chrome Extension (MV3)                      │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                   Service Worker                          │  │
+│  │  ┌─────────┐  ┌──────────┐  ┌────────┐  ┌────────────┐  │  │
+│  │  │ Context │→ │   Site   │→ │Download│→ │  Native    │  │  │
+│  │  │  Menu   │  │ Registry │  │   er   │  │  Client    │  │  │
+│  │  └─────────┘  └──────────┘  └────────┘  └─────┬──────┘  │  │
+│  └───────────────────────────────────────────────┼──────────┘  │
+└──────────────────────────────────────────────────┼──────────────┘
+                                                   │ stdio/JSON
+                                                   ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Native Host (Go Binary)                      │
+│  ┌───────────┐  ┌──────────────┐  ┌─────────────────────────┐  │
+│  │ Messaging │→ │   Handlers   │→ │   Platform (darwin)     │  │
+│  │  (stdio)  │  │ get/open     │  │ Launch Services, open   │  │
+│  └───────────┘  └──────────────┘  └─────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Technology Stack
+
+**Extension:**
+- TypeScript (strict mode)
+- Chrome Extension Manifest V3
+- esbuild for bundling
+
+**Native Host:**
+- Go 1.21+
+- No CGo (pure Go for simple cross-compilation)
+- Static binary
+
+**Decision: Pure Go (no CGo)**
+- **Rationale**: Simpler build, no Xcode dependency
+- **Trade-offs**: Can't use Launch Services directly, use `open` command instead
+- **Alternatives considered**: CGo with CoreFoundation bindings
+
+**Decision: Manifest V3**
+- **Rationale**: Required for Chrome Web Store, future-proof
+- **Trade-offs**: Service worker model, no persistent background page
+- **Alternatives considered**: MV2 (deprecated)
+
+---
+
+## Risks
+
+### Technical Risks
+
+**Risk**: Chrome downloads API doesn't return full file path
+- **Impact**: High (breaks core flow)
+- **Likelihood**: Low (documented behavior)
+- **Mitigation**: Test on all target browsers early
+- **Fallback**: Use known Downloads folder path + filename
+
+**Risk**: Read-only permission (0444) causes app warnings
+- **Impact**: Medium (UX friction)
+- **Likelihood**: Medium (app-dependent)
+- **Mitigation**: Test with Excel, Word, Numbers, Pages
+- **Fallback**: Use different permission or file flag approach
+
+### Dependency Risks
+
+**Risk**: Google changes export URL format
+- **Impact**: High (breaks export)
+- **Likelihood**: Low (stable for years)
+- **Mitigation**: Version URLs in config, easy to update
+- **Fallback**: Detect failure, prompt manual download
+
+### Scope Risks
+
+**Risk**: Users request Office 365 support in V1
+- **Impact**: Low (scope creep)
+- **Likelihood**: High
+- **Mitigation**: Clear V1/V1.5/V2 scoping, documented roadmap
+- **Fallback**: Point to PRD-v1.5.md
+
+---
+
+## Appendix
+
+### Glossary
+- **Native Messaging Host**: Binary that Chrome can invoke for privileged operations
+- **MV3**: Manifest Version 3, Chrome's current extension format
+- **Service Worker**: Background script model in MV3 (replaces persistent pages)
+
+### Open Questions
+- Should we support Google Drawings? (Likely no - low usage)
+- Should "Open in Preview" be an option for PDF export of Slides? (V2 consideration)

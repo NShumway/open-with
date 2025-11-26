@@ -1,0 +1,71 @@
+#!/bin/bash
+set -e
+
+# Reclaim: Open With - Post-installation script
+# Installs native messaging host manifests to browser directories
+
+# Source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
+# Extension ID - update this after Chrome Web Store upload
+# For development, use the unpacked extension ID from chrome://extensions
+EXTENSION_ID="${EXTENSION_ID:-EXTENSION_ID_PLACEHOLDER}"
+
+# Create manifest content
+create_manifest() {
+    cat <<EOF
+{
+  "name": "com.reclaim.openwith",
+  "description": "Reclaim: Open With native helper",
+  "path": "${BINARY_PATH}",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://${EXTENSION_ID}/"
+  ]
+}
+EOF
+}
+
+# Install manifest to a specific browser directory
+install_manifest() {
+    local browser_dir="$1"
+
+    if [ -n "$browser_dir" ]; then
+        mkdir -p "$browser_dir"
+        create_manifest > "$browser_dir/$MANIFEST_NAME"
+        chmod 644 "$browser_dir/$MANIFEST_NAME"
+        echo "Installed manifest to: $browser_dir"
+    fi
+}
+
+# Install for all browsers in a user's home directory
+install_for_user() {
+    local user_home="$1"
+
+    for browser_path in $(get_browser_paths "$user_home"); do
+        install_manifest "$browser_path"
+    done
+}
+
+# Main installation
+echo "Installing Reclaim: Open With native messaging host..."
+
+# Set binary permissions
+if [ -f "$BINARY_PATH" ]; then
+    chmod 755 "$BINARY_PATH"
+    echo "Set binary permissions: $BINARY_PATH"
+else
+    echo "Warning: Binary not found at $BINARY_PATH"
+fi
+
+# Install for all users
+for user_home in $(get_user_homes); do
+    echo "Installing for user: $user_home"
+    install_for_user "$user_home"
+done
+
+echo "Installation complete!"
+echo ""
+echo "NOTE: If you installed the extension from the Chrome Web Store, it should work automatically."
+echo "For development/unpacked extensions, update the extension ID in the manifest files."

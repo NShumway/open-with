@@ -1,0 +1,45 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS specific
+.DS_Store
+
+# Task Master
+.taskmaster/
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Go build artifacts
+native-host/bin/
+native-host/reclaim-openwith
+
+# Extension build artifacts
+extension/dist/
+extension/node_modules/
+
+# Package artifacts
+*.zip
+*.crx
+.taskmaster/config.json

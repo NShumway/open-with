@@ -1,0 +1,19 @@
+{
+  "name": "reclaim-openwith-extension",
+  "version": "1.0.0",
+  "description": "Chrome extension for Reclaim: Open With native application launching",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.3",
+    "vitest": "^2.1.0"
+  }
+}

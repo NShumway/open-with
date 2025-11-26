@@ -1,0 +1,37 @@
+#!/bin/bash
+set -e
+
+# Reclaim: Open With - Pre-installation script
+# Cleans up old versions before installing new one
+
+# Source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
+echo "Cleaning up previous installation..."
+
+# Remove old binary
+if [ -f "$BINARY_PATH" ]; then
+    rm -f "$BINARY_PATH"
+    echo "Removed old binary: $BINARY_PATH"
+fi
+
+# Remove old manifests from all browser directories
+remove_manifests() {
+    local user_home="$1"
+
+    for browser_path in $(get_browser_paths "$user_home"); do
+        local manifest_path="$browser_path/$MANIFEST_NAME"
+        if [ -f "$manifest_path" ]; then
+            rm -f "$manifest_path"
+            echo "Removed old manifest: $manifest_path"
+        fi
+    done
+}
+
+# Clean up for all users
+for user_home in $(get_user_homes); do
+    remove_manifests "$user_home"
+done
+
+echo "Cleanup complete!"
