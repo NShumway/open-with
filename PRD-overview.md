@@ -1,4 +1,11 @@
-# Reclaim: Open With - Product Requirements Document
+# Reclaim: Open With — Overview
+
+> **Implementation PRDs:**
+> - [PRD-v1.md](PRD-v1.md) — Google Workspace (Sheets, Docs, Slides)
+> - [PRD-v1.5.md](PRD-v1.5.md) — OAuth services (Office 365, Box, Confluence)
+> - [PRD-v2.md](PRD-v2.md) — Wild west extraction (any page)
+
+---
 
 ## Overview
 
@@ -19,8 +26,9 @@ This extension reclaims user control: right-click → "Open With" for known docu
 
 ## Goals
 
-- **V1:** Single-click experience to open documents from supported cloud services in desktop apps
-- **V2:** Content discovery modal to extract tables, text, and clean PDFs from any webpage
+- **V1:** Single-click experience to open Google Workspace documents in desktop apps
+- **V1.5:** Expand to additional cloud services via user-provided OAuth or authenticated sessions
+- **V2:** Content discovery modal to extract tables, text, and clean PDFs from any webpage — including bypassing view-only restrictions
 - Use system default applications for each file type (respects user preferences)
 - Downloaded file triggers "Save As" behavior on close (not overwrite)
 - Works on any Chromium-based browser (Chrome, Brave, Edge, Arc, etc.)
@@ -30,7 +38,7 @@ This extension reclaims user control: right-click → "Open With" for known docu
 - Selecting from multiple compatible applications (use system default only)
 - Cleaning up downloaded files automatically
 - Windows/Linux publishing (architecture supports cross-platform, but V1 ships macOS only due to testing constraints)
-- Fighting obfuscated content — if sites actively prevent extraction, we don't try to bypass
+- Services requiring OAuth (Office 365, Zoho, etc.) — deferred to V1.5
 
 ---
 
@@ -55,15 +63,35 @@ This extension reclaims user control: right-click → "Open With" for known docu
 | Google Sheets | Spreadsheets | .xlsx |
 | Google Docs | Documents | .docx |
 | Google Slides | Presentations | .pptx |
-| Office Online (Word) | Documents | .docx |
-| Office Online (Excel) | Spreadsheets | .xlsx |
-| Office Online (PowerPoint) | Presentations | .pptx |
-| Dropbox Paper | Documents | .docx |
 
 **Context Menu (V1):**
 
 On supported sites, context menu shows:
 - "Open in [Default App Name]" (e.g., "Open in Microsoft Excel")
+
+### V1.5: Additional Cloud Services (OAuth Model)
+
+V1.5 expands support to services that require OAuth or more complex authentication. Users who need these services can provide their own API credentials or leverage existing authenticated sessions.
+
+**Candidate Services:**
+
+| Service | Auth Method | Export Approach |
+|---------|-------------|-----------------|
+| Office 365 / OneDrive | User OAuth via Microsoft Graph API | API download endpoint |
+| Box | Session cookies (URLs expire in 15 min) | Direct download with `?download=1` |
+| Confluence | Basic Auth or session | PDF export via `flyingpdf` endpoint |
+| Zoho Writer/Sheet | OAuth token | API download endpoint |
+
+**Architecture:**
+- Extension settings page for OAuth configuration
+- Secure token storage in `chrome.storage.local`
+- Token refresh handling for long-lived sessions
+
+**Open Questions:**
+- Should we provide a "bring your own OAuth app" model, or register our own apps with each provider?
+- How to handle token expiration gracefully during export?
+
+---
 
 ### V2: Discovery Modal for Any Page
 
@@ -122,6 +150,16 @@ On supported sites, context menu shows:
 - Ad elements removed using common selectors + EasyList patterns
 - Navigation, headers, footers, sidebars optionally removed
 - Cleaned DOM rendered to PDF via browser print
+
+**View-Only Bypass (V2):**
+
+When a Google Doc/Sheet/Slide has downloads disabled by the owner, V2 extracts content directly from the rendered DOM:
+
+- **Documents:** Extract text content from the rendered editor DOM
+- **Spreadsheets:** Parse the visible grid cells into a table structure
+- **Presentations:** Capture slides as rendered (images or text extraction)
+
+This respects the user's right to interact with content served to their browser. If it's rendered, it's extractable.
 
 **Ad Removal Implementation:**
 
@@ -192,17 +230,15 @@ interface SiteConfig {
 }
 ```
 
-**Site Registry:**
+**Site Registry (V1 — Google Only):**
 
 | Service | URL Pattern | Export URL |
 |---------|-------------|------------|
 | Google Sheets | `docs.google.com/spreadsheets/d/*` | `https://docs.google.com/spreadsheets/d/{id}/export?format=xlsx` |
 | Google Docs | `docs.google.com/document/d/*` | `https://docs.google.com/document/d/{id}/export?format=docx` |
 | Google Slides | `docs.google.com/presentation/d/*` | `https://docs.google.com/presentation/d/{id}/export?format=pptx` |
-| Office Word | `*.sharepoint.com/*doc*`, `onedrive.live.com/*` | Via Office API |
-| Office Excel | `*.sharepoint.com/*xlsx*`, `onedrive.live.com/*` | Via Office API |
-| Office PowerPoint | `*.sharepoint.com/*pptx*`, `onedrive.live.com/*` | Via Office API |
-| Dropbox Paper | `paper.dropbox.com/doc/*` | `https://paper.dropbox.com/doc/{id}/export/docx` |
+
+**Note:** Office 365, Dropbox Paper, and other services require OAuth or complex authentication — deferred to V1.5.
 
 ---
 
@@ -220,16 +256,12 @@ interface SiteConfig {
     "scripting"
   ],
   "host_permissions": [
-    "https://docs.google.com/*",
-    "https://*.sharepoint.com/*",
-    "https://onedrive.live.com/*",
-    "https://paper.dropbox.com/*",
-    "<all_urls>"
+    "https://docs.google.com/*"
   ]
 }
 ```
 
-Note: `<all_urls>` is required for V2 content extraction on arbitrary pages. V1 could ship with limited host_permissions and expand for V2.
+Note: V1 ships with minimal permissions (Google only). V1.5 adds host permissions for Office 365, Box, etc. V2 adds `<all_urls>` for content extraction on arbitrary pages.
 
 ### Context Menu Behavior (V1)
 
@@ -447,15 +479,21 @@ Or on error:
 ## Success Metrics
 
 ### V1
-- Context menu appears reliably on all supported document sites
+- Context menu appears reliably on Google Docs, Sheets, and Slides
 - File opens in correct default application within 3 seconds of click
 - Application prompts "Save As" on first save (not overwrite to temp)
 - Works across Chrome, Brave, Edge, and other Chromium browsers
+
+### V1.5
+- OAuth flow completes successfully for supported services
+- Token refresh works transparently (no re-auth needed for weeks)
+- At least 2 additional services supported (Office 365, Box, or Confluence)
 
 ### V2
 - Tables detected on >90% of pages containing `<table>` elements
 - Clean PDF removes ads on popular sites (news, blogs, documentation)
 - Modal opens in <200ms after click
+- View-only Google Docs successfully extracted via DOM parsing
 
 ---
 
@@ -481,7 +519,11 @@ Or on error:
 
 ### 4. Hardcoded sites vs dynamic detection?
 
-**Decision:** Hardcoded site registry for V1 (reliable, predictable). V2 adds content discovery for any page via the modal. No attempt to fight obfuscation — if sites actively prevent extraction, we gracefully show nothing.
+**Decision:** Hardcoded site registry for V1 (reliable, predictable). V1.5 adds OAuth-based services. V2 adds content discovery for any page via the modal.
+
+### 7. What about view-only documents with downloads disabled?
+
+**Decision:** V1 attempts the export URL and shows a user-friendly error if blocked (403). V2 adds DOM-based extraction as a fallback — if the content is rendered in the browser, we can extract it. This aligns with the extension's philosophy: the browser is the user's tool.
 
 ### 5. Ad removal approach for clean PDF?
 
