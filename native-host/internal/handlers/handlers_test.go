@@ -110,8 +110,8 @@ func TestHandleOpen_Success(t *testing.T) {
 	// Create a temp directory for this test
 	tempDir := t.TempDir()
 
-	// Create a test file with valid filename pattern (openwith-{id}-{timestamp}.{ext})
-	testFile := filepath.Join(tempDir, "openwith-abc12345-1234567890.xlsx")
+	// Create a test file with valid filename pattern (open-with-{title}.{ext})
+	testFile := filepath.Join(tempDir, "open-with-Q4 Budget.xlsx")
 	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestHandleOpen_FileNotFound(t *testing.T) {
 	// Use valid filename format but non-existent path
 	msg := &messaging.Message{
 		Action:   "open",
-		FilePath: "/nonexistent/openwith-abc12345-1234567890.xlsx",
+		FilePath: "/nonexistent/open-with-Test Document.xlsx",
 		FileType: "xlsx",
 	}
 
@@ -191,7 +191,7 @@ func TestHandleOpen_OpenError(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Use valid filename format
-	testFile := filepath.Join(tempDir, "openwith-abc12345-1234567890.xlsx")
+	testFile := filepath.Join(tempDir, "open-with-Meeting Notes.xlsx")
 	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestHandleOpen_OpenError(t *testing.T) {
 func TestHandleOpen_InvalidFilenameFormat(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// Create a file with invalid filename format (not matching openwith-* pattern)
+	// Create a file with invalid filename format (not matching open-with-* pattern)
 	testFile := filepath.Join(tempDir, "malicious-file.xlsx")
 	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
@@ -256,7 +256,7 @@ func TestHandleOpen_SystemDirectoryBlocked(t *testing.T) {
 	// Try to access a file in a system directory (even with valid filename)
 	msg := &messaging.Message{
 		Action:   "open",
-		FilePath: "/usr/local/openwith-abc12345-1234567890.xlsx",
+		FilePath: "/usr/local/open-with-System File.xlsx",
 		FileType: "xlsx",
 	}
 

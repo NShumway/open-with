@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Supported page state -->
+    <div id="supported" class="hidden" role="main" aria-labelledby="supported-title">
+      <div class="header">
+        <img src="../icons/icon48.png" alt="" class="icon" aria-hidden="true">
+        <h1 id="supported-title">Open in desktop app?</h1>
+      </div>
+      <p class="description">
+        This will download the current <span id="doc-type">document</span> and open it locally.
+      </p>
+      <p class="filename" id="filename" title=""></p>
+      <div class="buttons">
+        <button id="cancel" class="secondary" type="button">Cancel</button>
+        <button id="open" class="primary" type="button">Open</button>
+      </div>
+    </div>
+
+    <!-- Unsupported page state -->
+    <div id="unsupported" class="hidden" role="main" aria-labelledby="unsupported-title">
+      <div class="header">
+        <img src="../icons/icon48.png" alt="" class="icon" aria-hidden="true">
+        <h1 id="unsupported-title">Not supported</h1>
+      </div>
+      <p class="description">This extension works with:</p>
+      <ul class="site-list" role="list">
+        <li>Google Docs</li>
+        <li>Google Sheets</li>
+        <li>Google Slides</li>
+      </ul>
+      <div class="buttons">
+        <button id="close" class="secondary" type="button">Close</button>
+      </div>
+    </div>
+
+    <!-- Error state -->
+    <div id="error" class="hidden" role="alert" aria-labelledby="error-title">
+      <div class="header">
+        <img src="../icons/icon48.png" alt="" class="icon" aria-hidden="true">
+        <h1 id="error-title">Error</h1>
+      </div>
+      <p class="description" id="error-message">Something went wrong.</p>
+      <div class="buttons">
+        <button id="dismiss" class="secondary" type="button">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- Loading state -->
+    <div id="loading" role="status" aria-label="Loading">
+      <div class="header">
+        <img src="../icons/icon48.png" alt="" class="icon" aria-hidden="true">
+        <h1>Loading...</h1>
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

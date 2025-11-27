@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   downloadFile,
   generateFilename,
+  parseDocumentTitle,
+  sanitizeFilename,
   cancelDownload,
   DownloadError,
 } from './downloader';
@@ -239,35 +241,125 @@ describe('downloadFile', () => {
   });
 });
 
+describe('parseDocumentTitle', () => {
+  it('should parse Google Sheets title', () => {
+    expect(parseDocumentTitle('Q4 Budget - Google Sheets')).toBe('Q4 Budget');
+  });
+
+  it('should parse Google Docs title', () => {
+    expect(parseDocumentTitle('Meeting Notes - Google Docs')).toBe('Meeting Notes');
+  });
+
+  it('should parse Google Slides title', () => {
+    expect(parseDocumentTitle('Sales Deck - Google Slides')).toBe('Sales Deck');
+  });
+
+  it('should parse Google Drive title', () => {
+    expect(parseDocumentTitle('My File - Google Drive')).toBe('My File');
+  });
+
+  it('should return title as-is if no Google suffix', () => {
+    expect(parseDocumentTitle('Some Other Page')).toBe('Some Other Page');
+  });
+
+  it('should handle empty string', () => {
+    expect(parseDocumentTitle('')).toBe('');
+  });
+
+  it('should trim whitespace', () => {
+    expect(parseDocumentTitle('  Spaced Title  - Google Sheets')).toBe('Spaced Title');
+  });
+});
+
+describe('sanitizeFilename', () => {
+  it('should remove backslashes', () => {
+    expect(sanitizeFilename('file\\name')).toBe('filename');
+  });
+
+  it('should remove forward slashes', () => {
+    expect(sanitizeFilename('file/name')).toBe('filename');
+  });
+
+  it('should remove colons', () => {
+    expect(sanitizeFilename('file:name')).toBe('filename');
+  });
+
+  it('should remove asterisks', () => {
+    expect(sanitizeFilename('file*name')).toBe('filename');
+  });
+
+  it('should remove question marks', () => {
+    expect(sanitizeFilename('file?name')).toBe('filename');
+  });
+
+  it('should remove quotes', () => {
+    expect(sanitizeFilename('file"name')).toBe('filename');
+  });
+
+  it('should remove angle brackets', () => {
+    expect(sanitizeFilename('file<name>')).toBe('filename');
+  });
+
+  it('should remove pipe characters', () => {
+    expect(sanitizeFilename('file|name')).toBe('filename');
+  });
+
+  it('should collapse multiple spaces', () => {
+    expect(sanitizeFilename('file   name')).toBe('file name');
+  });
+
+  it('should trim whitespace', () => {
+    expect(sanitizeFilename('  filename  ')).toBe('filename');
+  });
+
+  it('should truncate long filenames to 200 chars', () => {
+    const longName = 'a'.repeat(250);
+    expect(sanitizeFilename(longName).length).toBe(200);
+  });
+
+  it('should handle combined invalid characters', () => {
+    expect(sanitizeFilename('My/Bad:File*Name?')).toBe('MyBadFileName');
+  });
+
+  it('should preserve valid characters', () => {
+    expect(sanitizeFilename('Valid File-Name_2024')).toBe('Valid File-Name_2024');
+  });
+});
+
 describe('generateFilename', () => {
-  it('should generate a valid filename with document ID and extension', () => {
-    const filename = generateFilename('abc123xyz789', 'xlsx');
-    expect(filename).toMatch(/^openwith-abc123xy-\d+\.xlsx$/);
+  it('should use document title when available with open-with- prefix', () => {
+    const filename = generateFilename('Q4 Budget - Google Sheets', 'abc123xyz789', 'xlsx');
+    expect(filename).toBe('open-with-Q4 Budget.xlsx');
   });
 
-  it('should use correct file extension for docx', () => {
-    const filename = generateFilename('docid123', 'docx');
-    expect(filename).toMatch(/\.docx$/);
+  it('should use correct extension for docx with open-with- prefix', () => {
+    const filename = generateFilename('Meeting Notes - Google Docs', 'docid123', 'docx');
+    expect(filename).toBe('open-with-Meeting Notes.docx');
   });
 
-  it('should use correct file extension for pptx', () => {
-    const filename = generateFilename('slideid', 'pptx');
-    expect(filename).toMatch(/\.pptx$/);
+  it('should use correct extension for pptx with open-with- prefix', () => {
+    const filename = generateFilename('Sales Deck - Google Slides', 'slideid', 'pptx');
+    expect(filename).toBe('open-with-Sales Deck.pptx');
   });
 
-  it('should produce unique filenames', () => {
-    const filename1 = generateFilename('sameid', 'xlsx');
-    // Small delay to ensure different timestamp
-    const filename2 = generateFilename('sameid', 'xlsx');
-    // Filenames might be same if called in same millisecond, but generally unique
-    expect(filename1).toMatch(/^openwith-sameid-\d+\.xlsx$/);
-    expect(filename2).toMatch(/^openwith-sameid-\d+\.xlsx$/);
+  it('should fall back to document ID when title is empty', () => {
+    const filename = generateFilename('', 'abc123xyz789', 'xlsx');
+    expect(filename).toMatch(/^open-with-abc123xy-\d+\.xlsx$/);
   });
 
-  it('should truncate long document IDs', () => {
-    const longId = 'a'.repeat(100);
-    const filename = generateFilename(longId, 'xlsx');
-    expect(filename).toMatch(/^openwith-aaaaaaaa-\d+\.xlsx$/);
+  it('should fall back to document ID when title has only invalid chars', () => {
+    const filename = generateFilename(' - Google Sheets', 'abc123xyz789', 'xlsx');
+    expect(filename).toMatch(/^open-with-abc123xy-\d+\.xlsx$/);
+  });
+
+  it('should sanitize filename with special characters', () => {
+    const filename = generateFilename('My/Report:2024 - Google Sheets', 'docid', 'xlsx');
+    expect(filename).toBe('open-with-MyReport2024.xlsx');
+  });
+
+  it('should handle title without Google suffix', () => {
+    const filename = generateFilename('Regular Title', 'docid', 'xlsx');
+    expect(filename).toBe('open-with-Regular Title.xlsx');
   });
 });
 

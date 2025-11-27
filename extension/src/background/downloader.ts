@@ -146,16 +146,76 @@ function mapDownloadError(error: string): DownloadError {
 }
 
 /**
+ * Parse document title from browser tab title
+ * Removes the Google service suffix to get just the document name.
+ * @param tabTitle - The browser tab title (e.g., "Q4 Budget - Google Sheets")
+ * @returns The document name without the service suffix
+ */
+export function parseDocumentTitle(tabTitle: string): string {
+  const suffixes = [
+    ' - Google Sheets',
+    ' - Google Docs',
+    ' - Google Slides',
+    ' - Google Drive',
+  ];
+
+  let title = tabTitle;
+  for (const suffix of suffixes) {
+    if (title.endsWith(suffix)) {
+      title = title.slice(0, -suffix.length);
+      break;
+    }
+  }
+
+  return title.trim();
+}
+
+/**
+ * Sanitize a string for use as a filename
+ * Removes characters not allowed in filenames on Windows/macOS/Linux
+ * @param name - The raw filename
+ * @returns A filesystem-safe filename
+ */
+export function sanitizeFilename(name: string): string {
+  // Remove characters not allowed in filenames
+  // Windows: \ / : * ? " < > |
+  // macOS/Linux: / and null
+  let sanitized = name.replace(/[\\/:*?"<>|]/g, '');
+
+  // Replace multiple spaces with single space
+  sanitized = sanitized.replace(/\s+/g, ' ');
+
+  // Trim whitespace
+  sanitized = sanitized.trim();
+
+  // Limit length (leave room for extension)
+  if (sanitized.length > 200) {
+    sanitized = sanitized.slice(0, 200);
+  }
+
+  return sanitized;
+}
+
+/**
  * Generate a unique filename for a downloaded document
- * @param documentId - The document ID from the URL
+ * Uses the document title from the tab, with document ID as fallback.
+ * @param tabTitle - The browser tab title
+ * @param documentId - Fallback if title is empty
  * @param fileType - The file extension/type
  * @returns A filename safe for the filesystem
  */
-export function generateFilename(documentId: string, fileType: FileType): string {
-  // Use a shortened document ID and timestamp for uniqueness
-  const shortId = documentId.slice(0, 8);
-  const timestamp = Date.now();
-  return `openwith-${shortId}-${timestamp}.${fileType}`;
+export function generateFilename(
+  tabTitle: string,
+  documentId: string,
+  fileType: FileType
+): string {
+  const parsedTitle = parseDocumentTitle(tabTitle);
+  const sanitized = sanitizeFilename(parsedTitle);
+
+  // Use document ID as fallback if title is empty or only whitespace
+  const baseName = sanitized || `${documentId.slice(0, 8)}-${Date.now()}`;
+
+  return `open-with-${baseName}.${fileType}`;
 }
 
 /**

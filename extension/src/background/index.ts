@@ -3,234 +3,120 @@
 // Orchestrates URL detection, file download, and native app launching
 
 import { openFile, NativeMessagingError } from './native-client';
-import { registerContextMenus, isOurMenuItem } from './context-menu';
 import {
   getSiteConfig,
   extractDocumentId,
   buildExportUrl,
 } from './site-registry';
 import { downloadFile, generateFilename, DownloadError } from './downloader';
-import { refreshDefaultApps, getOpenInTitle } from './app-defaults';
 
 console.log('Reclaim: Open With extension loaded');
 
-/**
- * Set up declarative content rules to only show the action on supported pages
- */
-async function setupDeclarativeContent(): Promise<void> {
-  // Clear existing rules
-  await chrome.declarativeContent.onPageChanged.removeRules(undefined);
-
-  // Add rules to enable action only on Google Docs/Sheets/Slides
-  await chrome.declarativeContent.onPageChanged.addRules([
-    {
-      conditions: [
-        new chrome.declarativeContent.PageStateMatcher({
-          pageUrl: { hostEquals: 'docs.google.com', pathContains: '/document/d/' },
-        }),
-        new chrome.declarativeContent.PageStateMatcher({
-          pageUrl: { hostEquals: 'docs.google.com', pathContains: '/spreadsheets/d/' },
-        }),
-        new chrome.declarativeContent.PageStateMatcher({
-          pageUrl: { hostEquals: 'docs.google.com', pathContains: '/presentation/d/' },
-        }),
-      ],
-      actions: [new chrome.declarativeContent.ShowAction()],
-    },
-  ]);
+// Cached error for popup display
+interface CachedError {
+  title: string;
+  message: string;
+  tabId: number;
+  timestamp: number;
 }
 
-/**
- * Update the action title based on the current tab's URL
- * Shows "Open in [AppName]" for supported pages
- */
-async function updateActionTitle(tabId: number, url: string | undefined): Promise<void> {
-  if (!url) {
-    return;
-  }
+let cachedError: CachedError | null = null;
 
+// Message types from popup
+interface OpenDocumentMessage {
+  action: 'openDocument';
+  tabId: number;
+}
+
+interface GetErrorMessage {
+  action: 'getError';
+}
+
+interface ClearErrorMessage {
+  action: 'clearError';
+}
+
+type PopupMessage = OpenDocumentMessage | GetErrorMessage | ClearErrorMessage;
+
+/**
+ * Handle opening a document for a given tab
+ * Used by popup message handler
+ */
+async function handleOpenDocument(tabId: number, url: string, tabTitle: string): Promise<void> {
   const config = getSiteConfig(url);
   if (!config) {
-    // Not a supported page - use default title
-    await chrome.action.setTitle({ tabId, title: 'Open in desktop app' });
-    return;
+    throw new Error('This page is not a supported Google document');
   }
 
-  await chrome.action.setTitle({ tabId, title: getOpenInTitle(config.fileType) });
+  await updateBadge(tabId, 'progress');
+
+  const documentId = extractDocumentId(url, config);
+  if (!documentId) {
+    throw new Error('Could not identify the document from the URL');
+  }
+
+  const exportUrl = buildExportUrl(config, documentId);
+  const filename = generateFilename(tabTitle, documentId, config.fileType);
+
+  console.log(`Downloading ${config.name}: ${documentId} as ${filename}`);
+
+  const { filePath } = await downloadFile({
+    url: exportUrl,
+    filename,
+    fileType: config.fileType,
+  });
+
+  console.log(`Downloaded to: ${filePath}`);
+
+  await openFile(filePath, config.fileType);
+
+  console.log('Opened in default application');
+
+  await updateBadge(tabId, 'success');
 }
 
 /**
- * Listen for tab activation to update the action title
+ * Listen for messages from popup
  */
-chrome.tabs.onActivated.addListener(async (activeInfo) => {
-  try {
-    const tab = await chrome.tabs.get(activeInfo.tabId);
-    await updateActionTitle(activeInfo.tabId, tab.url);
-  } catch {
-    // Tab may have been closed
+chrome.runtime.onMessage.addListener((message: PopupMessage, _sender, sendResponse) => {
+  if (message.action === 'getError') {
+    sendResponse({ error: cachedError });
+    return false;
   }
-});
 
-/**
- * Listen for tab URL changes to update the action title
- */
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // Only update when URL changes or page finishes loading
-  if (changeInfo.url || changeInfo.status === 'complete') {
-    await updateActionTitle(tabId, tab.url);
-  }
-});
-
-/**
- * Initialize extension on install or update
- */
-chrome.runtime.onInstalled.addListener(async () => {
-  console.log('Extension installed/updated');
-
-  // Set up declarative content to only show icon on supported pages
-  await setupDeclarativeContent();
-
-  try {
-    await refreshDefaultApps();
-    await registerContextMenus();
-    console.log('Context menus registered successfully');
-  } catch (error) {
-    console.error('Failed to initialize extension:', error);
-
-    // Show notification about setup required
-    if (error instanceof NativeMessagingError) {
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon-48.png',
-        title: 'Setup Required',
-        message: error.message,
+  if (message.action === 'clearError') {
+    if (cachedError) {
+      const tabId = cachedError.tabId;
+      cachedError = null;
+      chrome.action.setBadgeText({ text: '', tabId }).catch(() => {
+        // Tab may have been closed
       });
     }
-  }
-});
-
-/**
- * Re-register menus on browser startup (service worker may have been stopped)
- */
-chrome.runtime.onStartup.addListener(async () => {
-  console.log('Browser started, re-registering menus');
-
-  try {
-    await refreshDefaultApps();
-    await registerContextMenus();
-  } catch (error) {
-    console.error('Failed to register menus on startup:', error);
-  }
-});
-
-/**
- * Handle toolbar icon clicks
- * Opens the current document in the appropriate desktop app
- * Note: Icon is only visible/clickable on supported pages due to declarativeContent rules
- */
-chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab?.id || !tab.url) {
-    console.error('No tab information available');
-    return;
+    sendResponse({ success: true });
+    return false;
   }
 
-  const config = getSiteConfig(tab.url);
-  if (!config) {
-    // Shouldn't happen due to declarativeContent, but handle gracefully
-    console.error('Toolbar clicked on unsupported page:', tab.url);
-    return;
-  }
+  if (message.action === 'openDocument' && message.tabId) {
+    // Get the tab URL and process the document
+    chrome.tabs.get(message.tabId).then(async (tab) => {
+      if (!tab.url) {
+        console.error('No URL available for tab');
+        return;
+      }
 
-  const tabId = tab.id;
-
-  try {
-    await updateBadge(tabId, 'progress');
-
-    const documentId = extractDocumentId(tab.url, config);
-    if (!documentId) {
-      throw new Error('Could not identify the document from the URL');
-    }
-
-    const exportUrl = buildExportUrl(config, documentId);
-    const filename = generateFilename(documentId, config.fileType);
-
-    console.log(`Downloading ${config.name}: ${documentId}`);
-
-    const { filePath } = await downloadFile({
-      url: exportUrl,
-      filename,
-      fileType: config.fileType,
+      try {
+        await handleOpenDocument(message.tabId, tab.url, tab.title || '');
+      } catch (error) {
+        console.error('Failed to open document:', error);
+        await handleError(message.tabId, error);
+      }
+    }).catch((error) => {
+      console.error('Failed to get tab:', error);
     });
-
-    console.log(`Downloaded to: ${filePath}`);
-
-    await openFile(filePath, config.fileType);
-
-    console.log('Opened in default application');
-
-    await updateBadge(tabId, 'success');
-  } catch (error) {
-    console.error('Failed to open document:', error);
-    await handleError(tabId, error);
-  }
-});
-
-/**
- * Handle context menu clicks
- */
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  // Ignore menu items from other extensions
-  if (!isOurMenuItem(info.menuItemId)) {
-    return;
   }
 
-  if (!tab?.id || !tab.url) {
-    console.error('No tab information available');
-    return;
-  }
-
-  const tabId = tab.id;
-
-  try {
-    // Show progress indicator
-    await updateBadge(tabId, 'progress');
-
-    // Get site config and extract document ID
-    const config = getSiteConfig(tab.url);
-    if (!config) {
-      throw new Error('This page is not a supported Google document');
-    }
-
-    const documentId = extractDocumentId(tab.url, config);
-    if (!documentId) {
-      throw new Error('Could not identify the document from the URL');
-    }
-
-    // Build export URL and download
-    const exportUrl = buildExportUrl(config, documentId);
-    const filename = generateFilename(documentId, config.fileType);
-
-    console.log(`Downloading ${config.name}: ${documentId}`);
-
-    const { filePath } = await downloadFile({
-      url: exportUrl,
-      filename,
-      fileType: config.fileType,
-    });
-
-    console.log(`Downloaded to: ${filePath}`);
-
-    // Send to native host to open in default app
-    await openFile(filePath, config.fileType);
-
-    console.log('Opened in default application');
-
-    // Clear badge on success
-    await updateBadge(tabId, 'success');
-  } catch (error) {
-    console.error('Failed to open document:', error);
-    await handleError(tabId, error);
-  }
+  // Return false to indicate we're not using sendResponse asynchronously
+  return false;
 });
 
 /**
@@ -251,12 +137,7 @@ async function updateBadge(
     case 'error':
       await chrome.action.setBadgeText({ text: '!', tabId });
       await chrome.action.setBadgeBackgroundColor({ color: '#ea4335', tabId });
-      // Clear error badge after 5 seconds
-      setTimeout(() => {
-        chrome.action.setBadgeText({ text: '', tabId }).catch(() => {
-          // Tab may have been closed
-        });
-      }, 5000);
+      // Note: Badge auto-clear is handled in handleError with cached error timestamp
       break;
   }
 }
@@ -304,10 +185,30 @@ async function handleError(tabId: number, error: unknown): Promise<void> {
     message = error.message;
   }
 
+  // Cache error for popup display
+  const timestamp = Date.now();
+  cachedError = {
+    title,
+    message,
+    tabId,
+    timestamp,
+  };
+
+  // Show notification
   chrome.notifications.create({
     type: 'basic',
-    iconUrl: 'icons/icon-48.png',
+    iconUrl: 'icons/icon48.png',
     title,
     message,
   });
+
+  // Auto-clear after 30 seconds if error hasn't been viewed
+  setTimeout(() => {
+    if (cachedError && cachedError.timestamp === timestamp) {
+      cachedError = null;
+      chrome.action.setBadgeText({ text: '', tabId }).catch(() => {
+        // Tab may have been closed
+      });
+    }
+  }, 30000);
 }

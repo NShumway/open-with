@@ -19,8 +19,9 @@ var allowedExtensions = map[string]bool{
 	".pdf":  true,
 }
 
-// filenamePattern matches our expected filename format: openwith-{id}-{timestamp}.{ext}
-var filenamePattern = regexp.MustCompile(`^openwith-[a-zA-Z0-9]+-\d+\.(xlsx|docx|pptx|txt|pdf)$`)
+// filenamePattern matches our expected filename format: open-with-{title}.{ext}
+// Title can contain alphanumeric, spaces, hyphens, underscores, and common punctuation
+var filenamePattern = regexp.MustCompile(`^open-with-.+\.(xlsx|docx|pptx|txt|pdf)$`)
 
 // validateFilePath ensures the file path is safe to process
 // Returns an error message if validation fails, empty string if valid
