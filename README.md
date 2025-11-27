@@ -1,13 +1,13 @@
 # Reclaim: Open With
 
-A Chrome extension that opens Google Docs, Sheets, and Slides in your desktop applications. macOS only.
+Quickly open Google Docs, Sheets, and Slides locally.
 
 ## Project Status
 
 | Version | Description | Status |
 |---------|-------------|--------|
 | **V1** | Google Workspace (Sheets, Docs, Slides) via toolbar popup | ✅ Built |
-| **V1.5** | OAuth services (Office 365, Box, Confluence) | 📋 Planned |
+| **V1.5** | Additional providers (Office 365, Box, Confluence) | 📋 Planned |
 | **V2** | Content extraction from any page (tables, text, clean PDFs) | 📋 Planned |
 
 See [PRD-overview.md](PRD-overview.md) for the full roadmap.
@@ -17,7 +17,6 @@ See [PRD-overview.md](PRD-overview.md) for the full roadmap.
 - Click the toolbar icon on any Google Workspace document to open it locally
 - Supports Google Sheets, Docs, and Slides
 - Works with Chrome, Brave, Edge, Chromium, Vivaldi, and Arc
-- Native macOS integration
 - No data collection or external servers
 
 ## Building from Source
