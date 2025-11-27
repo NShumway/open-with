@@ -1,54 +1,86 @@
 # Reclaim: Open With
 
-A Chrome extension that opens Google Docs, Sheets, and Slides in your desktop applications with a single right-click.
+A Chrome extension that opens Google Docs, Sheets, and Slides in your desktop applications. macOS only.
 
-## Features
+## Project Status
 
-- Right-click any Google Workspace document to open it in your default desktop app
+| Version | Description | Status |
+|---------|-------------|--------|
+| **V1** | Google Workspace (Sheets, Docs, Slides) via toolbar popup | ✅ Built |
+| **V1.5** | OAuth services (Office 365, Box, Confluence) | 📋 Planned |
+| **V2** | Content extraction from any page (tables, text, clean PDFs) | 📋 Planned |
+
+See [PRD-overview.md](PRD-overview.md) for the full roadmap.
+
+## Features (V1)
+
+- Click the toolbar icon on any Google Workspace document to open it locally
 - Supports Google Sheets, Docs, and Slides
 - Works with Chrome, Brave, Edge, Chromium, Vivaldi, and Arc
 - Native macOS integration
 - No data collection or external servers
 
-## Installation
+## Building from Source
 
-### 1. Install the Native Host
+### Prerequisites
 
-Download and run the installer package:
+- macOS (only platform tested)
+- [Node.js](https://nodejs.org/) 18+ and npm
+- [Go](https://go.dev/) 1.21+
 
-```bash
-sudo installer -pkg reclaim-openwith-1.0.0.pkg -target /
-```
-
-Or build from source:
+### 1. Build the Extension
 
 ```bash
-cd installer
-./build-pkg.sh --universal
-sudo installer -pkg dist/reclaim-openwith-1.0.0.pkg -target /
+cd extension
+npm install
+npm run build
 ```
 
-### 2. Install the Chrome Extension
+This creates the built extension in `extension/dist/`.
 
-**From Chrome Web Store** (recommended):
-- Visit the [Chrome Web Store listing](#) and click "Add to Chrome"
+### 2. Build the Native Host
 
-**For Development**:
+```bash
+cd native-host
+make build
+```
+
+This creates the binary at `native-host/bin/reclaim-openwith`.
+
+### 3. Load the Extension in Chrome
+
 1. Open `chrome://extensions` in your browser
-2. Enable "Developer mode" (toggle in top right)
-3. Click "Load unpacked"
-4. Select the `extension/dist` directory
-5. Note the extension ID shown on the card
-6. Run the host installer script with your extension ID:
-   ```bash
-   ./installer/scripts/install-host-macos.sh <your-extension-id>
-   ```
+2. Enable **Developer mode** (toggle in top right)
+3. Click **Load unpacked**
+4. Select the `extension` directory (not `extension/dist`)
+5. Note the **Extension ID** shown on the card (e.g., `mjckmmbohfpikiaplhcjmjcjeicenmih`)
+
+### 4. Install the Native Messaging Host
+
+The native host must be installed separately — Chrome doesn't do this automatically.
+
+```bash
+./installer/scripts/install-host-macos.sh <your-extension-id>
+```
+
+Replace `<your-extension-id>` with the ID from step 3.
+
+This installs the manifest file that tells Chrome where to find the native host binary. The manifest is placed in:
+- Chrome: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`
+- Chromium: `~/Library/Application Support/Chromium/NativeMessagingHosts/`
+
+### 5. Test It
+
+1. Navigate to any Google Doc, Sheet, or Slide
+2. Click the extension icon in the toolbar
+3. Click "Open" in the popup
+4. The document downloads and opens in your default desktop application
 
 ## Usage
 
 1. Navigate to any Google Doc, Sheet, or Slide
-2. Right-click anywhere on the page
-3. Click "Open in [App Name]" (e.g., "Open in Microsoft Excel")
+2. Click the extension icon in the toolbar
+3. Click "Open" in the confirmation popup
 4. The document downloads and opens in your default desktop application
 
 ## Supported Services
@@ -61,12 +93,12 @@ sudo installer -pkg dist/reclaim-openwith-1.0.0.pkg -target /
 
 ## How It Works
 
-1. The extension detects when you're viewing a Google Workspace document
-2. On right-click, it shows a context menu with the default app for that file type
-3. When clicked, the extension:
+1. When you click the toolbar icon, the popup detects if you're on a supported Google Workspace page
+2. If supported, it shows a confirmation with the document name and file type
+3. When you click "Open", the extension:
    - Exports the document using Google's export API
    - Downloads the file to your Downloads folder
-   - Sends the file path to the native host
+   - Sends the file path to the native messaging host
    - The native host opens the file with your default application
 
 ## Troubleshooting
@@ -74,10 +106,9 @@ sudo installer -pkg dist/reclaim-openwith-1.0.0.pkg -target /
 ### "Downloads disabled by owner" error
 The document owner has disabled downloads. Use File > Download from the Google Docs menu instead.
 
-### No context menu appears
-- Verify the extension is enabled at `chrome://extensions`
-- Refresh the page
-- Check that you're on a Google Docs/Sheets/Slides URL
+### Popup shows "Not supported"
+- Check that you're on a Google Docs/Sheets/Slides document URL (not the homepage)
+- The URL should look like `docs.google.com/spreadsheets/d/...` or similar
 
 ### File doesn't open
 Check that you have a default application set for the file type:
@@ -89,14 +120,16 @@ Check that you have a default application set for the file type:
 ### "Native host not found" error
 The native messaging host may not be installed correctly:
 ```bash
-# Check if binary exists
-ls -la /usr/local/bin/reclaim-openwith
-
-# Check if manifest exists (Chrome example)
+# Check if manifest exists (Chrome)
 cat ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/com.reclaim.openwith.json
+
+# The manifest should point to the binary - verify that path exists
 ```
 
-If missing, reinstall the package or run the install script manually.
+If missing, run the install script with your extension ID:
+```bash
+./installer/scripts/install-host-macos.sh <your-extension-id>
+```
 
 ## Uninstallation
 
@@ -108,26 +141,13 @@ Then remove the extension from `chrome://extensions`.
 
 ## Development
 
-### Prerequisites
-
-- Node.js 18+
-- Go 1.21+
-- macOS (for native host)
-
-### Building
+### Running Tests
 
 ```bash
-# Build everything
-./installer/build.sh
-
-# Build extension only
-cd extension && npm run build
-
-# Build native host only
-cd native-host && make build
-
-# Run tests
+# Extension tests
 cd extension && npm test
+
+# Native host tests
 cd native-host && make test
 ```
 
@@ -138,6 +158,7 @@ cd native-host && make test
 ├── extension/           # Chrome extension (TypeScript)
 │   ├── src/
 │   │   ├── background/  # Service worker
+│   │   ├── popup/       # Toolbar popup UI
 │   │   └── types/       # TypeScript definitions
 │   ├── dist/            # Built extension
 │   └── manifest.json
