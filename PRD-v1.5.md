@@ -6,6 +6,51 @@
 
 ---
 
+## V1 Implementation Summary
+
+Before diving into V1.5, here's what V1 actually implemented (updated from original PRD):
+
+### V1 UX Model: Popup Confirmation
+- **Popup-based interaction** (not context menus) - User clicks toolbar icon → confirmation popup
+- **Three popup states**: Supported page (show filename, Open/Cancel), Unsupported page (list of supported services), Error state (cached error details)
+- **Toolbar icon always visible** - No declarativeContent rules, popup handles unsupported page messaging
+
+### V1 Permissions (Minimal)
+```json
+{
+  "permissions": ["activeTab", "nativeMessaging", "downloads", "notifications"]
+}
+```
+- **No `contextMenus`** - Removed in favor of popup
+- **No `host_permissions`** - `activeTab` grants temporary access on click
+- **No `tabs`** - `activeTab` is sufficient
+
+### V1 File Handling
+- **Files stay in Downloads folder** - No temp directory movement, no chmod
+- **Uses document title for filename** - Parsed from tab title, sanitized for filesystem
+- **Filename format**: `open-with-{sanitized-title}.{ext}`
+
+### V1 Architecture
+```
+extension/
+├── src/
+│   ├── background/
+│   │   ├── index.ts          # Message handlers, error caching
+│   │   ├── site-registry.ts  # URL patterns, export URL builders
+│   │   ├── downloader.ts     # Download + filename generation
+│   │   └── native-client.ts  # Native messaging wrapper
+│   ├── popup/
+│   │   ├── popup.ts          # State management, button handlers
+│   │   ├── popup.html        # Three-state UI
+│   │   ├── popup.css         # Light/dark mode support
+│   │   └── title-parser.ts   # Document title parsing utilities
+│   └── types/
+│       └── messages.ts       # Shared type definitions
+└── manifest.json
+```
+
+---
+
 ## Problem Statement
 
 V1 only supports Google Workspace. Users of OneDrive, Dropbox, and Box must still manually download and open files. The previous approach assumed OAuth was required — but these services already authenticate users via browser sessions. The real challenge is detecting supported pages and discovering download URLs for each service.
@@ -18,7 +63,7 @@ V1 only supports Google Workspace. Users of OneDrive, Dropbox, and Box must stil
 
 ## Success Metrics
 
-- Context menu appears on supported cloud storage file pages
+- **Popup recognizes new services** and shows appropriate confirmation UI
 - Same <3 second file open time as V1
 - Zero additional authentication required (uses existing browser session)
 - At least 2 additional services fully supported
@@ -140,24 +185,34 @@ Different approaches for obtaining files, ordered by preference.
 - **Behavior**: Inject script that clicks download button, monitor `chrome.downloads` for new download
 - **When to use**: Last resort when other methods fail
 
-### Capability: Extended Context Menu
+### Capability: Extended Popup UI
 
-Updates V1's context menu for new services.
+Updates V1's popup for new services.
 
-#### Feature: Multi-Service Menu
-- **Description**: Show appropriate context menu based on current site
+#### Feature: Multi-Service Detection
+- **Description**: Detect which service the current page belongs to and show appropriate UI
 - **Inputs**: Current URL, detected service
-- **Outputs**: Context menu with correct label
-- **Behavior**: "Open in Excel" on OneDrive spreadsheet, "Open in Word" on Dropbox .docx, etc.
+- **Outputs**: Popup UI with correct service name and file info
+- **Behavior**: Popup shows "Open spreadsheet in Excel?" on OneDrive spreadsheet, "Open document in Word?" on Dropbox .docx, etc.
 
 #### Feature: File Type Detection
 - **Description**: Determine file type from URL or page content
-- **Inputs**: URL, page DOM (via content script)
+- **Inputs**: URL, page DOM (via content script if needed)
 - **Outputs**: File extension, MIME type
 - **Behavior**:
   - Parse extension from URL/filename
   - Or scrape from page metadata
   - Or infer from service-specific URL patterns (SharePoint `:x:` = Excel)
+
+#### Feature: Document Title Extraction
+- **Description**: Extract document title for filename generation
+- **Inputs**: Tab title, URL, page DOM
+- **Outputs**: Sanitized document title
+- **Behavior**:
+  - Parse from tab.title (remove service suffix like " - OneDrive")
+  - Or scrape from page DOM (document title element)
+  - Sanitize for filesystem safety
+  - Fallback to generic name if extraction fails
 
 ---
 
@@ -167,25 +222,31 @@ Updates V1's context menu for new services.
 extension/
 ├── src/
 │   ├── background/
-│   │   ├── index.ts              # Extended with new services
-│   │   ├── site-registry.ts      # Extended with OneDrive/Dropbox/Box
+│   │   ├── index.ts              # Message handlers, error caching (extended)
+│   │   ├── site-registry.ts      # Extended with OneDrive/Dropbox/Box patterns
 │   │   ├── downloader.ts         # Extended with new download strategies
 │   │   ├── native-client.ts      # (unchanged from V1)
-│   │   ├── context-menu.ts       # (unchanged from V1)
 │   │   └── services/             # NEW: Per-service logic
 │   │       ├── index.ts          # Service registry
-│   │       ├── google.ts         # V1 Google logic (refactored)
+│   │       ├── google.ts         # V1 Google logic (refactored from site-registry)
 │   │       ├── onedrive.ts       # OneDrive/SharePoint
 │   │       ├── dropbox.ts        # Dropbox
 │   │       └── box.ts            # Box
+│   ├── popup/                    # Extended from V1
+│   │   ├── popup.ts              # Updated for multi-service detection
+│   │   ├── popup.html            # (unchanged structure)
+│   │   ├── popup.css             # (unchanged)
+│   │   └── title-parser.ts       # Extended for new service title patterns
 │   ├── content/                  # NEW: Content scripts for DOM access
 │   │   ├── scraper.ts            # Generic DOM scraping utilities
 │   │   └── download-trigger.ts   # Trigger native download buttons
 │   └── types/
 │       └── messages.ts           # Extended with new message types
-├── manifest.json                 # Updated with content script config
+├── manifest.json                 # Updated with content script config + host_permissions
 └── package.json
 ```
+
+**Note:** V1 does not have `context-menu.ts` - it was removed in favor of popup-based interaction.
 
 ### Module: services/index
 - **Maps to capability**: Service Detection
@@ -402,39 +463,51 @@ Before implementation, each service needs investigation:
 
 ## Architecture
 
-### Download Flow (Extended)
+### Download Flow (Extended from V1)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     Chrome Extension (MV3)                          │
-│  ┌────────────────────────────────────────────────────────────────┐ │
-│  │                     Background Script                          │ │
-│  │  ┌─────────┐   ┌─────────────┐   ┌──────────────────────────┐ │ │
-│  │  │ Context │──►│   Service   │──►│    Download Strategy     │ │ │
-│  │  │  Menu   │   │  Registry   │   │  ┌─────────────────────┐ │ │ │
-│  │  └─────────┘   │             │   │  │ 1. Direct URL       │ │ │ │
-│  │                │ ┌─────────┐ │   │  │ 2. Fetch + Blob     │ │ │ │
-│  │                │ │ Google  │ │   │  │ 3. WebRequest       │ │ │ │
-│  │                │ │ OneDrive│ │   │  │ 4. Button Trigger   │ │ │ │
-│  │                │ │ Dropbox │ │   │  └─────────────────────┘ │ │ │
-│  │                │ │ Box     │ │   └──────────────────────────┘ │ │
-│  │                │ └─────────┘ │                                 │ │
-│  │                └─────────────┘                                 │ │
-│  └────────────────────────────────────────────────────────────────┘ │
-│                              │                                      │
-│  ┌───────────────────────────▼────────────────────────────────────┐ │
-│  │                    Content Scripts                             │ │
-│  │  ┌──────────────────┐  ┌────────────────────────────────────┐ │ │
-│  │  │  DOM Scraper     │  │  Download Button Trigger           │ │ │
-│  │  │  (find URLs)     │  │  (click native button)             │ │ │
-│  │  └──────────────────┘  └────────────────────────────────────┘ │ │
-│  └────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              │ Downloaded file path
-                              ▼
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                      Popup UI                                │   │
+│  │  ┌───────────────────────────────────────────────────────┐  │   │
+│  │  │ Click toolbar icon → Popup shows:                      │  │   │
+│  │  │  • Supported: "Open {filename} in {app}?" [Open/Cancel]│  │   │
+│  │  │  • Unsupported: "Not supported" + service list         │  │   │
+│  │  │  • Error: Cached error details [Dismiss]               │  │   │
+│  │  └───────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────┬───────────────────────────────┘   │
+│                                │ {action: 'openDocument'}          │
+│  ┌─────────────────────────────▼───────────────────────────────┐   │
+│  │                   Background Script                          │   │
+│  │  ┌─────────────┐   ┌──────────────────────────────────────┐ │   │
+│  │  │   Service   │──►│      Download Strategy               │ │   │
+│  │  │  Registry   │   │  ┌────────────────────────────────┐  │ │   │
+│  │  │ ┌─────────┐ │   │  │ 1. Direct URL (Google, Dropbox)│  │ │   │
+│  │  │ │ Google  │ │   │  │ 2. Fetch + Blob (Box API)      │  │ │   │
+│  │  │ │ OneDrive│ │   │  │ 3. WebRequest intercept        │  │ │   │
+│  │  │ │ Dropbox │ │   │  │ 4. Button Trigger (fallback)   │  │ │   │
+│  │  │ │ Box     │ │   │  └────────────────────────────────┘  │ │   │
+│  │  │ └─────────┘ │   └──────────────────────────────────────┘ │   │
+│  │  └─────────────┘                                             │   │
+│  └─────────────────────────────┬───────────────────────────────┘   │
+│                                │                                    │
+│  ┌─────────────────────────────▼───────────────────────────────┐   │
+│  │              Content Scripts (for some services)             │   │
+│  │  ┌──────────────────┐  ┌────────────────────────────────┐   │   │
+│  │  │  DOM Scraper     │  │  Download Button Trigger       │   │   │
+│  │  │  (find URLs)     │  │  (click native button)         │   │   │
+│  │  └──────────────────┘  └────────────────────────────────┘   │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │ Downloaded file path (in Downloads folder)
+                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    Native Host (unchanged from V1)                  │
+│  • Opens file directly from Downloads folder                        │
+│  • No temp directory movement, no chmod                             │
+│  • Validates filename pattern: open-with-{title}.{ext}              │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -454,6 +527,36 @@ Before implementation, each service needs investigation:
 - **Rationale**: Browser session provides authentication
 - **Trade-offs**: Won't work if user isn't logged in
 - **Alternatives**: Full OAuth (unnecessary complexity)
+
+**Decision: Keep popup-based UX from V1**
+- **Rationale**: Consistent user experience, prevents accidental downloads
+- **Trade-offs**: Extra click vs context menu (but popup was chosen deliberately in V1)
+- **Alternatives**: Re-add context menus for new services (rejected for consistency)
+
+### Permissions Changes from V1
+
+V1.5 requires additional permissions for content scripts and new service hosts:
+
+```json
+{
+  "permissions": [
+    "activeTab",
+    "nativeMessaging",
+    "downloads",
+    "notifications",
+    "scripting"          // NEW: for content script injection
+  ],
+  "host_permissions": [   // NEW: for content scripts on specific services
+    "https://onedrive.live.com/*",
+    "https://*.sharepoint.com/*",
+    "https://www.dropbox.com/*",
+    "https://app.box.com/*",
+    "https://*.app.box.com/*"
+  ]
+}
+```
+
+**Note:** V1 uses only `activeTab` with no `host_permissions`. V1.5 adds specific hosts because content scripts may need to run on these pages for DOM scraping, even before the user clicks the toolbar icon.
 
 ---
 
@@ -528,3 +631,12 @@ https://company.app.box.com/file/123456789
 - Should we support Google Drive (non-Workspace files like PDFs)? (Probably yes, easy addition)
 - Should we support iCloud? (Research needed on web interface)
 - How to handle files that require "request access"? (Show error, can't bypass)
+- Should popup list of "supported services" be updated dynamically as we add new services?
+- For services requiring content scripts: should we inject on page load or on-demand when user clicks icon?
+
+### V1 Learnings to Apply
+1. **Popup > Context Menu**: Users preferred the confirmation step; prevents accidental downloads
+2. **activeTab is powerful**: For Google, we don't need host_permissions at all — activeTab grants access on click
+3. **Files in Downloads is fine**: Users manage their own files; no need for temp directory complexity
+4. **Document title matters**: Using actual document title for filename is much better UX than document ID
+5. **Error caching works well**: Auto-clear after 30s, clear on view — simple but effective
