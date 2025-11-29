@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Reclaim: Open With",
-  "version": "1.0.0",
-  "description": "Open Google Docs, Sheets, and Slides in desktop applications",
+  "version": "1.5.0",
+  "description": "Open cloud documents in desktop applications",
   "permissions": [
     "activeTab",
     "nativeMessaging",
