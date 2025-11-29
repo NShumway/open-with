@@ -26,6 +26,17 @@ const popupOptions = {
   minify: !isWatch,
 };
 
+const contentScriptOptions = {
+  entryPoints: ['src/content/scraper.ts', 'src/content/download-trigger.ts'],
+  bundle: true,
+  outdir: 'dist/content',
+  format: 'iife',
+  target: 'es2020',
+  platform: 'browser',
+  sourcemap: true,
+  minify: !isWatch,
+};
+
 // Copy static popup files
 function copyPopupFiles() {
   const files = [
@@ -45,13 +56,15 @@ function copyPopupFiles() {
 if (isWatch) {
   const bgCtx = await esbuild.context(backgroundOptions);
   const popupCtx = await esbuild.context(popupOptions);
-  await Promise.all([bgCtx.watch(), popupCtx.watch()]);
+  const contentCtx = await esbuild.context(contentScriptOptions);
+  await Promise.all([bgCtx.watch(), popupCtx.watch(), contentCtx.watch()]);
   copyPopupFiles();
   console.log('Watching for changes...');
 } else {
   await Promise.all([
     esbuild.build(backgroundOptions),
     esbuild.build(popupOptions),
+    esbuild.build(contentScriptOptions),
   ]);
   copyPopupFiles();
   console.log('Build complete');
