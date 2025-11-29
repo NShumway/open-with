@@ -1,23 +1,55 @@
 # Reclaim: Open With
 
-Quickly open Google Docs, Sheets, and Slides locally.
+Quickly open cloud documents in desktop applications.
 
-## Project Status
+## Supported Services (V1.5)
 
-| Version | Description | Status |
-|---------|-------------|--------|
-| **V1** | Google Workspace (Sheets, Docs, Slides) via toolbar popup | ✅ Built |
-| **V1.5** | Additional providers (Office 365, Box, Confluence) | 📋 Planned |
-| **V2** | Content extraction from any page (tables, text, clean PDFs) | 📋 Planned |
+| Service | File Types | Status |
+|---------|-----------|--------|
+| Google Workspace | Docs, Sheets, Slides | Supported |
+| Dropbox | All office formats | Supported |
+| OneDrive/SharePoint | Excel, Word, PowerPoint | Supported |
+| Box | All office formats | Supported |
 
-See [PRD-overview.md](PRD-overview.md) for the full roadmap.
+## Features
 
-## Features (V1)
-
-- Click the toolbar icon on any Google Workspace document to open it locally
-- Supports Google Sheets, Docs, and Slides
+- Click the toolbar icon on any supported document to open it locally
+- Works with Google Sheets, Docs, Slides, Dropbox, OneDrive, SharePoint, and Box
 - Works with Chrome, Brave, Edge, Chromium, Vivaldi, and Arc
 - No data collection or external servers
+- Privacy-focused: only activates when you click the icon
+
+## Usage
+
+1. Navigate to any supported document:
+   - Google Docs/Sheets/Slides
+   - Dropbox file preview or shared link
+   - OneDrive personal or SharePoint business file
+   - Box file viewer
+2. Click the extension icon in the toolbar
+3. Click "Open" in the confirmation popup
+4. The document downloads and opens in your default desktop application
+
+## How It Works
+
+### Google Workspace
+- Exports document using Google's export API
+- Downloads to your Downloads folder
+- Opens with default application
+
+### Dropbox
+- Uses direct download link (adds `?dl=1` parameter)
+- Downloads to your Downloads folder
+- Opens with default application
+
+### OneDrive/SharePoint
+- Discovers download URL (transforms view URL to download URL)
+- Falls back to DOM scraping if needed
+- Downloads and opens in default application
+
+### Box
+- Discovers download URL from page or API
+- Downloads and opens in default application
 
 ## Building from Source
 
@@ -70,53 +102,46 @@ This installs the manifest file that tells Chrome where to find the native host 
 
 ### 5. Test It
 
-1. Navigate to any Google Doc, Sheet, or Slide
+1. Navigate to any supported document (Google Docs, Dropbox, OneDrive, or Box)
 2. Click the extension icon in the toolbar
 3. Click "Open" in the popup
 4. The document downloads and opens in your default desktop application
 
-## Usage
-
-1. Navigate to any Google Doc, Sheet, or Slide
-2. Click the extension icon in the toolbar
-3. Click "Open" in the confirmation popup
-4. The document downloads and opens in your default desktop application
-
-## Supported Services
-
-| Google Service | Opens With |
-|----------------|------------|
-| Google Sheets  | Excel, Numbers, or your default .xlsx app |
-| Google Docs    | Word, Pages, or your default .docx app |
-| Google Slides  | PowerPoint, Keynote, or your default .pptx app |
-
-## How It Works
-
-1. When you click the toolbar icon, the popup detects if you're on a supported Google Workspace page
-2. If supported, it shows a confirmation with the document name and file type
-3. When you click "Open", the extension:
-   - Exports the document using Google's export API
-   - Downloads the file to your Downloads folder
-   - Sends the file path to the native messaging host
-   - The native host opens the file with your default application
-
 ## Troubleshooting
 
-### "Downloads disabled by owner" error
-The document owner has disabled downloads. Use File > Download from the Google Docs menu instead.
+### Service-Specific Issues
 
-### Popup shows "Not supported"
-- Check that you're on a Google Docs/Sheets/Slides document URL (not the homepage)
-- The URL should look like `docs.google.com/spreadsheets/d/...` or similar
+**OneDrive/SharePoint:**
+- If download fails, try clicking "Download" manually to verify permissions
+- SharePoint org policies may restrict downloads
+- Shared files may require sign-in
 
-### File doesn't open
+**Dropbox:**
+- Shared links must allow downloads (not view-only)
+- Password-protected shares require password entry in browser first
+
+**Box:**
+- Enterprise accounts may have download restrictions
+- Some files require specific permissions
+
+**Google Workspace:**
+- "Downloads disabled by owner" error: The document owner has disabled downloads. Use File > Download from the Google Docs menu instead.
+
+### General Issues
+
+**Popup shows "Not supported":**
+- Verify you're on a document page (not homepage)
+- Check that the service is in the supported list above
+- The URL should contain a document/file ID
+
+**File doesn't open:**
 Check that you have a default application set for the file type:
 1. Download any .xlsx/.docx/.pptx file manually
 2. Right-click the file > Get Info
 3. Under "Open With", select your preferred app
 4. Click "Change All..." to set as default
 
-### "Native host not found" error
+**"Native host not found" error:**
 The native messaging host may not be installed correctly:
 ```bash
 # Check if manifest exists (Chrome)
@@ -156,7 +181,8 @@ cd native-host && make test
 .
 ├── extension/           # Chrome extension (TypeScript)
 │   ├── src/
-│   │   ├── background/  # Service worker
+│   │   ├── background/  # Service worker and service handlers
+│   │   │   └── services/  # Service-specific handlers (Google, Dropbox, OneDrive, Box)
 │   │   ├── popup/       # Toolbar popup UI
 │   │   └── types/       # TypeScript definitions
 │   ├── dist/            # Built extension
@@ -173,11 +199,17 @@ cd native-host && make test
 ## Privacy
 
 This extension:
-- Only activates on Google Docs URLs (`docs.google.com`)
+- Only activates when you click the toolbar icon
+- Works on supported document pages only
 - Does not collect any user data
 - Does not send data to external servers
-- Uses your existing Google session for downloads
+- Uses your existing session for downloads
 - All processing happens locally on your machine
+
+## Version History
+
+- **V1.5**: Added Dropbox, OneDrive/SharePoint, and Box support
+- **V1**: Initial release with Google Workspace support
 
 ## License
 
