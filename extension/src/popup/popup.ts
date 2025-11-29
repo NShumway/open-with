@@ -1,13 +1,9 @@
 // Popup script for Reclaim: Open With extension
 // Handles UI state management and user interactions
 
-import { getSiteConfig } from '../background/site-registry';
-import {
-  parseDocumentTitle,
-  extractDocumentIdFromUrl,
-  buildDisplayFilename,
-  getDocTypeName,
-} from './title-parser';
+import { detectService, getSupportedServices } from '../background/services/index';
+import '../background/site-registry'; // Trigger service registration
+import { buildDisplayFilename } from './title-parser';
 
 // DOM element references
 let supportedEl: HTMLElement;
@@ -140,27 +136,28 @@ async function init(): Promise<void> {
       return;
     }
 
-    // Check if this is a supported page
-    const config = getSiteConfig(tab.url);
-    if (!config) {
+    // Check if this is a supported page using service registry
+    const detection = detectService(tab.url);
+    if (!detection) {
       showState('unsupported');
       return;
     }
 
-    // Parse the document title
-    let title = tab.title ? parseDocumentTitle(tab.title, config) : '';
+    const { handler, info } = detection;
 
-    // Fallback to document ID if title is empty
+    // Parse the document title using service handler
+    let title = tab.title ? handler.parseTitle(tab.title) : '';
+
+    // Fallback to file ID if title is empty
     if (!title) {
-      const docId = extractDocumentIdFromUrl(tab.url, config);
-      title = docId ? `document-${docId.substring(0, 8)}` : 'document';
+      title = info.fileId ? `document-${info.fileId.substring(0, 8)}` : 'document';
     }
 
-    // Build display filename
-    const displayFilename = buildDisplayFilename(title, config.fileType);
+    // Build display filename using info.fileType
+    const displayFilename = buildDisplayFilename(title, info.fileType);
 
-    // Update UI
-    docTypeEl.textContent = getDocTypeName(config);
+    // Update UI with service name
+    docTypeEl.textContent = handler.name;
     filenameEl.textContent = displayFilename;
     filenameEl.title = displayFilename; // For tooltip on hover
 
