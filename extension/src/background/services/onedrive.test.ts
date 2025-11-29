@@ -109,6 +109,38 @@ describe('OneDriveService', () => {
     });
   });
 
+  describe('getDownloadUrl', () => {
+    describe('URL transformation strategy', () => {
+      it('should transform edit.aspx to download.aspx', async () => {
+        const info = oneDriveService.detect('https://onedrive.live.com/edit.aspx?resid=ABC123&app=Excel')!;
+        const downloadUrl = await oneDriveService.getDownloadUrl(info);
+        expect(downloadUrl).toBe('https://onedrive.live.com/download.aspx?resid=ABC123&app=Excel');
+      });
+
+      it('should transform view.aspx to download.aspx', async () => {
+        const info = oneDriveService.detect('https://onedrive.live.com/view.aspx?resid=XYZ789&cid=123')!;
+        const downloadUrl = await oneDriveService.getDownloadUrl(info);
+        expect(downloadUrl).toBe('https://onedrive.live.com/download.aspx?resid=XYZ789&cid=123');
+      });
+
+      it('should preserve all query parameters during transformation', async () => {
+        const info = oneDriveService.detect('https://onedrive.live.com/edit.aspx?resid=ABC&cid=123&app=Excel&other=value')!;
+        const downloadUrl = await oneDriveService.getDownloadUrl(info);
+        expect(downloadUrl).toContain('resid=ABC');
+        expect(downloadUrl).toContain('cid=123');
+        expect(downloadUrl).toContain('app=Excel');
+        expect(downloadUrl).toContain('other=value');
+      });
+    });
+
+    describe('URLs requiring DOM scraping', () => {
+      it('should throw error for SharePoint URLs without tab', async () => {
+        const info = oneDriveService.detect('https://contoso.sharepoint.com/:x:/r/sites/team/Budget.xlsx')!;
+        await expect(oneDriveService.getDownloadUrl(info)).rejects.toThrow();
+      });
+    });
+  });
+
   describe('parseTitle', () => {
     it('should remove " - OneDrive" suffix', () => {
       const title = 'Budget 2024.xlsx - OneDrive';
