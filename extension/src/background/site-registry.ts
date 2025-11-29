@@ -1,7 +1,18 @@
 // Site registry for Google Workspace services
 // Handles URL pattern matching and document ID extraction
+//
+// V1/V2 Architecture Bridge:
+// This module maintains V1 SiteConfig interface for backward compatibility
+// while internally delegating to the V2 service registry system.
+// V1 consumers (background/index.ts, popup.ts) can continue using
+// getSiteConfig(), extractDocumentId(), etc. without modification.
 
 import { FileType } from '../types/messages';
+import { registerService } from './services/index';
+import { googleService } from './services/google';
+
+// Register Google service with service registry on module load
+registerService(googleService);
 
 /**
  * Configuration for a supported cloud document service
