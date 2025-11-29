@@ -10,9 +10,15 @@
 import { FileType } from '../types/messages';
 import { registerService } from './services/index';
 import { googleService } from './services/google';
+import { dropboxService } from './services/dropbox';
+import { oneDriveService } from './services/onedrive';
+import { boxService } from './services/box';
 
-// Register Google service with service registry on module load
+// Register all services with service registry on module load
 registerService(googleService);
+registerService(dropboxService);
+registerService(oneDriveService);
+registerService(boxService);
 
 /**
  * Configuration for a supported cloud document service

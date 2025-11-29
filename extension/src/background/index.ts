@@ -3,12 +3,16 @@
 // Orchestrates URL detection, file download, and native app launching
 
 import { openFile, NativeMessagingError } from './native-client';
+import { detectService } from './services/index';
+// Import site-registry to trigger service registration side-effect
+import './site-registry';
 import {
-  getSiteConfig,
-  extractDocumentId,
-  buildExportUrl,
-} from './site-registry';
-import { downloadFile, generateFilename, DownloadError } from './downloader';
+  downloadFile,
+  downloadViaFetch,
+  downloadViaContentScript,
+  generateFilename,
+  DownloadError,
+} from './downloader';
 
 console.log('Reclaim: Open With extension loaded');
 
@@ -43,32 +47,64 @@ type PopupMessage = OpenDocumentMessage | GetErrorMessage | ClearErrorMessage;
  * Used by popup message handler
  */
 async function handleOpenDocument(tabId: number, url: string, tabTitle: string): Promise<void> {
-  const config = getSiteConfig(url);
-  if (!config) {
-    throw new Error('This page is not a supported Google document');
+  const detection = detectService(url);
+  if (!detection) {
+    throw new Error('This page is not a supported document service');
   }
+
+  const { handler, info } = detection;
 
   await updateBadge(tabId, 'progress');
 
-  const documentId = extractDocumentId(url, config);
-  if (!documentId) {
-    throw new Error('Could not identify the document from the URL');
+  // Get tab for services that need it (OneDrive, Box)
+  const tab = await chrome.tabs.get(tabId);
+
+  // Get download URL using service handler
+  const downloadUrl = await handler.getDownloadUrl(info, tab);
+
+  // Parse title using service-specific parser
+  const title = handler.parseTitle(tabTitle);
+  const filename = generateFilename(title, info.fileId, info.fileType);
+
+  console.log(`Downloading ${handler.name}: ${info.fileId} as ${filename}`);
+
+  // Select download strategy based on service
+  let filePath: string;
+
+  if (info.service === 'google' || info.service === 'dropbox') {
+    // Strategy 1: Direct URL download
+    const result = await downloadFile({
+      url: downloadUrl,
+      filename,
+      fileType: info.fileType,
+    });
+    filePath = result.filePath;
+  } else if (info.service === 'box') {
+    // Strategy 2: Fetch+blob download for Box API
+    const result = await downloadViaFetch(downloadUrl, filename);
+    filePath = result.filePath;
+  } else {
+    // OneDrive - try direct first, fallback to content script
+    try {
+      const result = await downloadFile({
+        url: downloadUrl,
+        filename,
+        fileType: info.fileType,
+      });
+      filePath = result.filePath;
+    } catch (error) {
+      console.warn('Direct download failed, trying content script fallback');
+      const result = await downloadViaContentScript(
+        tabId,
+        'a[data-automationid="downloadButton"]'
+      );
+      filePath = result.filePath;
+    }
   }
-
-  const exportUrl = buildExportUrl(config, documentId);
-  const filename = generateFilename(tabTitle, documentId, config.fileType);
-
-  console.log(`Downloading ${config.name}: ${documentId} as ${filename}`);
-
-  const { filePath } = await downloadFile({
-    url: exportUrl,
-    filename,
-    fileType: config.fileType,
-  });
 
   console.log(`Downloaded to: ${filePath}`);
 
-  await openFile(filePath, config.fileType);
+  await openFile(filePath, info.fileType);
 
   console.log('Opened in default application');
 
