@@ -1,5 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { oneDriveService } from './onedrive';
+
+// Mock chrome APIs
+const mockChrome = {
+  scripting: {
+    executeScript: vi.fn(),
+  },
+  tabs: {
+    sendMessage: vi.fn(),
+  },
+  runtime: {
+    lastError: null as { message: string } | null,
+  },
+};
+
+vi.stubGlobal('chrome', mockChrome);
 
 describe('OneDriveService', () => {
   describe('detect', () => {
@@ -134,9 +149,56 @@ describe('OneDriveService', () => {
     });
 
     describe('URLs requiring DOM scraping', () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+        mockChrome.runtime.lastError = null;
+      });
+
       it('should throw error for SharePoint URLs without tab', async () => {
         const info = oneDriveService.detect('https://contoso.sharepoint.com/:x:/r/sites/team/Budget.xlsx')!;
-        await expect(oneDriveService.getDownloadUrl(info)).rejects.toThrow();
+        await expect(oneDriveService.getDownloadUrl(info)).rejects.toThrow('Tab required');
+      });
+
+      it('should use DOM scraping for SharePoint URLs when tab provided', async () => {
+        const mockTab = { id: 123 } as chrome.tabs.Tab;
+        const info = oneDriveService.detect('https://contoso.sharepoint.com/:x:/r/sites/team/Budget.xlsx')!;
+
+        mockChrome.scripting.executeScript.mockResolvedValue([{ result: true }]);
+        mockChrome.tabs.sendMessage.mockImplementation((_tabId, _message, callback) => {
+          callback({ success: true, downloadUrl: 'https://contoso.sharepoint.com/download/Budget.xlsx' });
+        });
+
+        const downloadUrl = await oneDriveService.getDownloadUrl(info, mockTab);
+        expect(downloadUrl).toBe('https://contoso.sharepoint.com/download/Budget.xlsx');
+      });
+
+      it('should inject content script before sending message', async () => {
+        const mockTab = { id: 456 } as chrome.tabs.Tab;
+        const info = oneDriveService.detect('https://contoso.sharepoint.com/:w:/s/project/Document.docx')!;
+
+        mockChrome.scripting.executeScript.mockResolvedValue([{ result: true }]);
+        mockChrome.tabs.sendMessage.mockImplementation((_tabId, _message, callback) => {
+          callback({ success: true, downloadUrl: 'https://example.com/download' });
+        });
+
+        await oneDriveService.getDownloadUrl(info, mockTab);
+
+        expect(mockChrome.scripting.executeScript).toHaveBeenCalledWith({
+          target: { tabId: 456 },
+          files: ['dist/content/scraper.js'],
+        });
+      });
+
+      it('should throw error when content script fails to find download URL', async () => {
+        const mockTab = { id: 789 } as chrome.tabs.Tab;
+        const info = oneDriveService.detect('https://contoso.sharepoint.com/:x:/r/sites/team/Budget.xlsx')!;
+
+        mockChrome.scripting.executeScript.mockResolvedValue([{ result: true }]);
+        mockChrome.tabs.sendMessage.mockImplementation((_tabId, _message, callback) => {
+          callback({ success: false, error: 'Element not found' });
+        });
+
+        await expect(oneDriveService.getDownloadUrl(info, mockTab)).rejects.toThrow('Element not found');
       });
     });
   });

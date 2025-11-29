@@ -2,7 +2,7 @@
 // Handles URL detection and download URL discovery for OneDrive personal and SharePoint
 
 import { FileType } from '../../types/messages';
-import { OneDriveFileInfo, ServiceHandler } from '../../types/services';
+import { OneDriveFileInfo, ServiceHandler, ContentScriptResponse } from '../../types/services';
 
 class OneDriveService implements ServiceHandler<OneDriveFileInfo> {
   readonly name = 'OneDrive';
@@ -66,8 +66,55 @@ class OneDriveService implements ServiceHandler<OneDriveFileInfo> {
       return transformedUrl;
     }
 
-    // Strategy 2: DOM scraping (requires tab) - implemented in subtask 5
-    throw new Error('Download URL discovery not yet implemented for this URL type');
+    // Strategy 2: DOM scraping (requires tab)
+    if (!tab || !tab.id) {
+      throw new Error('Tab required for OneDrive download URL discovery');
+    }
+
+    // Inject content script for DOM scraping
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['dist/content/scraper.js'],
+    });
+
+    // Send message to content script to scrape download URL
+    const response = await this.sendMessageToContentScript(tab.id, {
+      action: 'scrapeDownloadUrl',
+      selectors: [
+        'a[data-automationid="downloadButton"]',
+        'button[name="Download"] ~ a',
+        'a[aria-label="Download"]',
+      ],
+    });
+
+    if (!response.success || !response.downloadUrl) {
+      throw new Error(response.error || 'Failed to find OneDrive download URL');
+    }
+
+    return response.downloadUrl;
+  }
+
+  private sendMessageToContentScript(
+    tabId: number,
+    message: { action: string; selectors: string[] }
+  ): Promise<ContentScriptResponse> {
+    return new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(tabId, message, (response: ContentScriptResponse | undefined) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (!response) {
+          reject(new Error('No response from content script'));
+          return;
+        }
+        if (!response.success) {
+          reject(new Error(response.error || 'Content script returned failure'));
+          return;
+        }
+        resolve(response);
+      });
+    });
   }
 
   parseTitle(tabTitle: string): string {
