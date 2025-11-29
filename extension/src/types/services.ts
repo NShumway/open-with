@@ -66,6 +66,21 @@ export interface BoxFileInfo extends BaseFileInfo {
 export type ServiceFileInfo = OneDriveFileInfo | GoogleFileInfo | DropboxFileInfo | BoxFileInfo;
 
 /**
+ * Alias for compatibility with task specification
+ */
+export type AnyServiceFileInfo = ServiceFileInfo;
+
+/**
+ * Metadata about a registered service
+ */
+export interface ServiceInfo {
+  type: ServiceType;
+  name: string;
+  displayName: string;
+  supportedFileTypes: FileType[];
+}
+
+/**
  * Interface for service-specific handlers
  * Each cloud service implements this interface to provide detection and download capabilities
  */
