@@ -19,6 +19,7 @@ let openBtn: HTMLButtonElement;
 let cancelBtn: HTMLButtonElement;
 let closeBtn: HTMLButtonElement;
 let dismissBtn: HTMLButtonElement;
+let siteListEl: HTMLElement;
 
 // Current tab information
 let currentTabId: number | null = null;
@@ -40,6 +41,20 @@ function initElements(): void {
   cancelBtn = document.getElementById('cancel') as HTMLButtonElement;
   closeBtn = document.getElementById('close') as HTMLButtonElement;
   dismissBtn = document.getElementById('dismiss') as HTMLButtonElement;
+  siteListEl = document.querySelector('.site-list')!;
+}
+
+/**
+ * Populate the service list dynamically from registry
+ */
+function populateSiteList(): void {
+  const services = getSupportedServices();
+  siteListEl.innerHTML = '';
+  for (const service of services) {
+    const li = document.createElement('li');
+    li.textContent = service.name;
+    siteListEl.appendChild(li);
+  }
 }
 
 /**
@@ -110,6 +125,7 @@ function setupButtonHandlers(): void {
 async function init(): Promise<void> {
   initElements();
   setupButtonHandlers();
+  populateSiteList();
 
   try {
     // Query the active tab

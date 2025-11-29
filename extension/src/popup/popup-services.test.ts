@@ -7,6 +7,28 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // we'll verify the imports and function signatures instead
 
 describe('Popup service registry integration', () => {
+  describe('dynamic service list', () => {
+    it('should have code to populate service list dynamically', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const popupPath = path.join(__dirname, 'popup.ts');
+      const content = fs.readFileSync(popupPath, 'utf-8');
+
+      // Check that popup uses getSupportedServices to build the list
+      expect(content).toMatch(/getSupportedServices\s*\(\)/);
+    });
+
+    it('should populate site-list element with services', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const popupPath = path.join(__dirname, 'popup.ts');
+      const content = fs.readFileSync(popupPath, 'utf-8');
+
+      // Check that popup manipulates site-list element
+      expect(content).toMatch(/site-list|siteList/);
+    });
+  });
+
   describe('import verification', () => {
     it('should import detectService from services/index', async () => {
       // Read popup.ts and verify it imports detectService
