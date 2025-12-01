@@ -8,13 +8,13 @@ Quickly open cloud documents in desktop applications.
 |---------|-----------|--------|
 | Google Workspace | Docs, Sheets, Slides | Supported |
 | Dropbox | All office formats | Supported |
-| OneDrive/SharePoint | Excel, Word, PowerPoint | Supported |
 | Box | All office formats | Supported |
+| OneDrive/SharePoint | - | Planned for V2 |
 
 ## Features
 
 - Click the toolbar icon on any supported document to open it locally
-- Works with Google Sheets, Docs, Slides, Dropbox, OneDrive, SharePoint, and Box
+- Works with Google Sheets, Docs, Slides, Dropbox, and Box
 - Works with Chrome, Brave, Edge, Chromium, Vivaldi, and Arc
 - No data collection or external servers
 - Privacy-focused: only activates when you click the icon
@@ -24,7 +24,6 @@ Quickly open cloud documents in desktop applications.
 1. Navigate to any supported document:
    - Google Docs/Sheets/Slides
    - Dropbox file preview or shared link
-   - OneDrive personal or SharePoint business file
    - Box file viewer
 2. Click the extension icon in the toolbar
 3. Click "Open" in the confirmation popup
@@ -42,13 +41,8 @@ Quickly open cloud documents in desktop applications.
 - Downloads to your Downloads folder
 - Opens with default application
 
-### OneDrive/SharePoint
-- Discovers download URL (transforms view URL to download URL)
-- Falls back to DOM scraping if needed
-- Downloads and opens in default application
-
 ### Box
-- Discovers download URL from page or API
+- Clicks native download button via content script
 - Downloads and opens in default application
 
 ## Building from Source
@@ -102,7 +96,7 @@ This installs the manifest file that tells Chrome where to find the native host 
 
 ### 5. Test It
 
-1. Navigate to any supported document (Google Docs, Dropbox, OneDrive, or Box)
+1. Navigate to any supported document (Google Docs, Dropbox, or Box)
 2. Click the extension icon in the toolbar
 3. Click "Open" in the popup
 4. The document downloads and opens in your default desktop application
@@ -110,11 +104,6 @@ This installs the manifest file that tells Chrome where to find the native host 
 ## Troubleshooting
 
 ### Service-Specific Issues
-
-**OneDrive/SharePoint:**
-- If download fails, try clicking "Download" manually to verify permissions
-- SharePoint org policies may restrict downloads
-- Shared files may require sign-in
 
 **Dropbox:**
 - Shared links must allow downloads (not view-only)
@@ -182,7 +171,7 @@ cd native-host && make test
 ├── extension/           # Chrome extension (TypeScript)
 │   ├── src/
 │   │   ├── background/  # Service worker and service handlers
-│   │   │   └── services/  # Service-specific handlers (Google, Dropbox, OneDrive, Box)
+│   │   │   └── services/  # Service-specific handlers (Google, Dropbox, Box)
 │   │   ├── popup/       # Toolbar popup UI
 │   │   └── types/       # TypeScript definitions
 │   ├── dist/            # Built extension
@@ -208,7 +197,7 @@ This extension:
 
 ## Version History
 
-- **V1.5**: Added Dropbox, OneDrive/SharePoint, and Box support
+- **V1.5**: Added Dropbox and Box support
 - **V1**: Initial release with Google Workspace support
 
 ## License

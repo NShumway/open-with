@@ -10,13 +10,6 @@
     "notifications",
     "scripting"
   ],
-  "host_permissions": [
-    "https://onedrive.live.com/*",
-    "https://*.sharepoint.com/*",
-    "https://www.dropbox.com/*",
-    "https://app.box.com/*",
-    "https://*.app.box.com/*"
-  ],
   "background": {
     "service_worker": "dist/background.js",
     "type": "module"

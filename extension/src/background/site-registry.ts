@@ -11,13 +11,11 @@ import { FileType } from '../types/messages';
 import { registerService } from './services/index';
 import { googleService } from './services/google';
 import { dropboxService } from './services/dropbox';
-import { oneDriveService } from './services/onedrive';
 import { boxService } from './services/box';
 
 // Register all services with service registry on module load
 registerService(googleService);
 registerService(dropboxService);
-registerService(oneDriveService);
 registerService(boxService);
 
 /**

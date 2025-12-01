@@ -29,13 +29,32 @@ function setupDownloadTriggerListener(): void {
 
 /**
  * Find and click the download button matching the selector
- * @param selector - CSS selector for the download button
+ * @param selector - CSS selector(s) for the download button (comma-separated)
  * @returns Response indicating success or failure
  */
 function triggerDownload(selector: string): ContentScriptResponse {
-  const element = document.querySelector(selector);
+  // Try combined selector first
+  let element = document.querySelector(selector);
+
+  // If not found, try each selector individually (handles case where commas are in attribute selectors)
+  if (!element) {
+    const selectors = selector.split(',').map(s => s.trim());
+    for (const sel of selectors) {
+      element = document.querySelector(sel);
+      if (element) break;
+    }
+  }
 
   if (!element) {
+    // Log available buttons for debugging
+    const allButtons = document.querySelectorAll('button, [role="button"], a[download]');
+    console.log('[Open With] Available buttons:', Array.from(allButtons).map(b => ({
+      tag: b.tagName,
+      text: b.textContent?.slice(0, 50),
+      'data-testid': b.getAttribute('data-testid'),
+      'aria-label': b.getAttribute('aria-label'),
+    })));
+
     return {
       success: false,
       error: `Download button not found: ${selector}`,
@@ -43,6 +62,7 @@ function triggerDownload(selector: string): ContentScriptResponse {
   }
 
   if (element instanceof HTMLElement) {
+    console.log('[Open With] Clicking download button:', element);
     element.click();
     return { success: true };
   }

@@ -8,7 +8,6 @@ import { detectService } from './services/index';
 import './site-registry';
 import {
   downloadFile,
-  downloadViaFetch,
   downloadViaContentScript,
   generateFilename,
   DownloadError,
@@ -56,12 +55,6 @@ async function handleOpenDocument(tabId: number, url: string, tabTitle: string):
 
   await updateBadge(tabId, 'progress');
 
-  // Get tab for services that need it (OneDrive, Box)
-  const tab = await chrome.tabs.get(tabId);
-
-  // Get download URL using service handler
-  const downloadUrl = await handler.getDownloadUrl(info, tab);
-
   // Parse title using service-specific parser
   const title = handler.parseTitle(tabTitle);
   const filename = generateFilename(title, info.fileId, info.fileType);
@@ -72,7 +65,9 @@ async function handleOpenDocument(tabId: number, url: string, tabTitle: string):
   let filePath: string;
 
   if (info.service === 'google' || info.service === 'dropbox') {
-    // Strategy 1: Direct URL download
+    // Strategy 1: Direct URL download (URL can be derived from page URL)
+    const tab = await chrome.tabs.get(tabId);
+    const downloadUrl = await handler.getDownloadUrl(info, tab);
     const result = await downloadFile({
       url: downloadUrl,
       filename,
@@ -80,26 +75,15 @@ async function handleOpenDocument(tabId: number, url: string, tabTitle: string):
     });
     filePath = result.filePath;
   } else if (info.service === 'box') {
-    // Strategy 2: Fetch+blob download for Box API
-    const result = await downloadViaFetch(downloadUrl, filename);
+    // Strategy 2: Click native download button for Box
+    // Box's API endpoints require OAuth or specific shared_name params we don't have
+    const result = await downloadViaContentScript(
+      tabId,
+      '[data-resin-target="download"], [data-testid="download-btn"], button[aria-label="Download"]'
+    );
     filePath = result.filePath;
   } else {
-    // OneDrive - try direct first, fallback to content script
-    try {
-      const result = await downloadFile({
-        url: downloadUrl,
-        filename,
-        fileType: info.fileType,
-      });
-      filePath = result.filePath;
-    } catch (error) {
-      console.warn('Direct download failed, trying content script fallback');
-      const result = await downloadViaContentScript(
-        tabId,
-        'a[data-automationid="downloadButton"]'
-      );
-      filePath = result.filePath;
-    }
+    throw new Error(`Unsupported service: ${info.service}`);
   }
 
   console.log(`Downloaded to: ${filePath}`);
@@ -233,7 +217,7 @@ async function handleError(tabId: number, error: unknown): Promise<void> {
   // Show notification
   chrome.notifications.create({
     type: 'basic',
-    iconUrl: 'icons/icon48.png',
+    iconUrl: chrome.runtime.getURL('icons/icon48.png'),
     title,
     message,
   });

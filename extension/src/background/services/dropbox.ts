@@ -15,6 +15,8 @@ class DropboxService implements ServiceHandler<DropboxFileInfo> {
     /^https:\/\/www\.dropbox\.com\/scl\/fi\/([a-zA-Z0-9]+)\/([^?]+)/,
     // File viewer: dropbox.com/home/{path}
     /^https:\/\/www\.dropbox\.com\/home\/(.+)/,
+    // Preview page: dropbox.com/preview/{path}
+    /^https:\/\/www\.dropbox\.com\/preview\/([^?]+)/,
   ];
 
   detect(url: string): DropboxFileInfo | null {
@@ -23,9 +25,20 @@ class DropboxService implements ServiceHandler<DropboxFileInfo> {
       const match = url.match(pattern);
       if (match) {
         const fileId = match[1];
-        const filename = match[2] ? decodeURIComponent(match[2]) : undefined;
-        // Home URLs are not shared links
+        // Only /s/ and /scl/fi/ are shared links; /home/ and /preview/ are not
         const isSharedLink = i < 2;
+
+        // For shared links, filename is in match[2]
+        // For /home/ and /preview/, extract filename from the path in match[1]
+        let filename: string | undefined;
+        if (match[2]) {
+          filename = decodeURIComponent(match[2]);
+        } else if (match[1]) {
+          // Extract filename from path (e.g., "Documents/Resume.docx" -> "Resume.docx")
+          const path = decodeURIComponent(match[1]);
+          const lastSlash = path.lastIndexOf('/');
+          filename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+        }
 
         return {
           service: 'dropbox',

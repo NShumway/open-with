@@ -1,12 +1,13 @@
 // Service handler type definitions
-// Shared types for multi-service support (OneDrive, Dropbox, Box, etc.)
+// Shared types for multi-service support (Dropbox, Box, etc.)
+// Note: OneDrive/SharePoint support is planned for v2
 
 import { FileType } from './messages';
 
 /**
  * Supported cloud storage services
  */
-export type ServiceType = 'google' | 'onedrive' | 'dropbox' | 'box';
+export type ServiceType = 'google' | 'dropbox' | 'box';
 
 /**
  * Base interface for file info returned by service detection
@@ -20,17 +21,6 @@ export interface BaseFileInfo {
   fileType: FileType;
   /** Original URL of the file */
   url: string;
-}
-
-/**
- * OneDrive/SharePoint specific file information
- */
-export interface OneDriveFileInfo extends BaseFileInfo {
-  service: 'onedrive';
-  /** Whether this is a SharePoint URL (vs personal OneDrive) */
-  isSharePoint: boolean;
-  /** SharePoint drive/tenant ID (only for SharePoint URLs) */
-  driveId?: string;
 }
 
 /**
@@ -63,7 +53,7 @@ export interface BoxFileInfo extends BaseFileInfo {
 /**
  * Union type of all service file info types
  */
-export type ServiceFileInfo = OneDriveFileInfo | GoogleFileInfo | DropboxFileInfo | BoxFileInfo;
+export type ServiceFileInfo = GoogleFileInfo | DropboxFileInfo | BoxFileInfo;
 
 /**
  * Alias for compatibility with task specification
@@ -107,7 +97,7 @@ export interface ServiceHandler<T extends ServiceFileInfo = ServiceFileInfo> {
 
   /**
    * Parse the document title from the browser tab title
-   * @param tabTitle - The full tab title (e.g., "Document Name - OneDrive")
+   * @param tabTitle - The full tab title (e.g., "Document Name - Google Docs")
    * @returns The cleaned document title
    */
   parseTitle(tabTitle: string): string;
@@ -128,13 +118,6 @@ export interface ContentScriptResponse {
 export interface ScrapeDownloadUrlMessage {
   action: 'scrapeDownloadUrl';
   selectors: string[];
-}
-
-/**
- * Type guard for OneDriveFileInfo
- */
-export function isOneDriveFileInfo(info: ServiceFileInfo): info is OneDriveFileInfo {
-  return info.service === 'onedrive';
 }
 
 /**

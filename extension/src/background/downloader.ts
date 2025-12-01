@@ -3,11 +3,9 @@
 //
 // Download strategies:
 // 1. Direct URL (downloadFile) - Google, Dropbox
-// 2. Fetch+Blob (downloadViaFetch) - Box API endpoints
-// 3. Content Script (downloadViaContentScript) - OneDrive/Box fallback
+// 2. Content Script (downloadViaContentScript) - Box (clicks native download button)
 
 import { FileType } from '../types/messages';
-import { sendToContentScript } from '../content/messaging';
 
 export interface DownloadOptions {
   url: string;
@@ -179,66 +177,8 @@ export function waitForDownloadComplete(
 }
 
 /**
- * Download file using fetch API and blob conversion
- * Used when direct URL download doesn't work due to redirects (e.g., Box API)
- * @param url - API endpoint URL
- * @param filename - Suggested filename
- * @returns Download result with file path
- * @throws DownloadError on failure
- */
-export async function downloadViaFetch(
-  url: string,
-  filename: string
-): Promise<DownloadResult> {
-  try {
-    const response = await fetch(url, {
-      credentials: 'include', // Send session cookies
-      headers: {
-        Accept: 'application/octet-stream',
-      },
-    });
-
-    if (!response.ok) {
-      throw new DownloadError(
-        `Fetch failed: ${response.status} ${response.statusText}`,
-        'network'
-      );
-    }
-
-    const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-
-    try {
-      // Download blob using Chrome API
-      const downloadId = await chrome.downloads.download({
-        url: objectUrl,
-        filename,
-        saveAs: false,
-      });
-
-      if (downloadId === undefined) {
-        throw new DownloadError(
-          'Failed to start blob download. Check browser permissions.',
-          'unknown'
-        );
-      }
-
-      // Wait for download to complete
-      const result = await waitForDownloadComplete(downloadId);
-      return result;
-    } finally {
-      // Clean up object URL
-      URL.revokeObjectURL(objectUrl);
-    }
-  } catch (error) {
-    if (error instanceof DownloadError) throw error;
-    throw new DownloadError(`Fetch download failed: ${error}`, 'network');
-  }
-}
-
-/**
  * Download file by triggering native download button via content script
- * Last resort fallback when URL-based downloads fail (OneDrive, Box)
+ * Used for Box where direct URL download isn't available
  * @param tabId - Tab containing the file page
  * @param selector - CSS selector for download button
  * @returns Download result
@@ -271,14 +211,25 @@ export async function downloadViaContentScript(
   });
 
   // Trigger download button click
-  const response = await sendToContentScript(tabId, {
-    action: 'scrapeDownloadUrl',
-    selectors: [selector],
-  });
+  const triggerResponse = await new Promise<{ success: boolean; error?: string }>(
+    (resolve, reject) => {
+      chrome.tabs.sendMessage(
+        tabId,
+        { action: 'triggerDownload', selector },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          resolve(response || { success: false, error: 'No response' });
+        }
+      );
+    }
+  );
 
-  if (!response.success) {
+  if (!triggerResponse.success) {
     throw new DownloadError(
-      response.error || 'Failed to trigger download button',
+      triggerResponse.error || 'Failed to trigger download button',
       'unknown'
     );
   }

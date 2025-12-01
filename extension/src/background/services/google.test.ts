@@ -92,11 +92,6 @@ describe('GoogleService', () => {
         expect(result).toBeNull();
       });
 
-      it('should return null for OneDrive URLs', () => {
-        const url = 'https://onedrive.live.com/edit.aspx?resid=123';
-        const result = googleService.detect(url);
-        expect(result).toBeNull();
-      });
     });
   });
 

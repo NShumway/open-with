@@ -6,26 +6,26 @@ import {
   getSupportedServices,
   clearServices,
 } from './index';
-import { ServiceHandler, OneDriveFileInfo, GoogleFileInfo } from '../../types/services';
+import { ServiceHandler, DropboxFileInfo, GoogleFileInfo } from '../../types/services';
 
 // Mock service handlers for testing
-const mockOneDriveHandler: ServiceHandler<OneDriveFileInfo> = {
-  name: 'OneDrive',
-  type: 'onedrive',
+const mockDropboxHandler: ServiceHandler<DropboxFileInfo> = {
+  name: 'Dropbox',
+  type: 'dropbox',
   detect: (url: string) => {
-    if (url.includes('onedrive.live.com')) {
+    if (url.includes('dropbox.com')) {
       return {
-        service: 'onedrive',
+        service: 'dropbox',
         fileId: 'test-id',
-        fileType: 'xlsx',
+        fileType: 'pdf',
         url,
-        isSharePoint: false,
+        isSharedLink: true,
       };
     }
     return null;
   },
   getDownloadUrl: async (info) => `https://download.com/${info.fileId}`,
-  parseTitle: (title) => title.replace(' - OneDrive', ''),
+  parseTitle: (title) => title.replace(' - Dropbox', ''),
 };
 
 const mockGoogleHandler: ServiceHandler<GoogleFileInfo> = {
@@ -54,26 +54,26 @@ describe('Service Registry', () => {
 
   describe('registerService', () => {
     it('should register a service handler', () => {
-      registerService(mockOneDriveHandler);
-      const handler = getServiceHandler('onedrive');
-      expect(handler).toBe(mockOneDriveHandler);
+      registerService(mockDropboxHandler);
+      const handler = getServiceHandler('dropbox');
+      expect(handler).toBe(mockDropboxHandler);
     });
 
     it('should overwrite existing handler for same type', () => {
-      const firstHandler = { ...mockOneDriveHandler, name: 'First' };
-      const secondHandler = { ...mockOneDriveHandler, name: 'Second' };
+      const firstHandler = { ...mockDropboxHandler, name: 'First' };
+      const secondHandler = { ...mockDropboxHandler, name: 'Second' };
 
       registerService(firstHandler);
       registerService(secondHandler);
 
-      const handler = getServiceHandler('onedrive');
+      const handler = getServiceHandler('dropbox');
       expect(handler?.name).toBe('Second');
     });
   });
 
   describe('getServiceHandler', () => {
     it('should return null for unregistered service type', () => {
-      const handler = getServiceHandler('dropbox');
+      const handler = getServiceHandler('box');
       expect(handler).toBeNull();
     });
 
@@ -86,17 +86,17 @@ describe('Service Registry', () => {
 
   describe('detectService', () => {
     it('should return null when no services registered', () => {
-      const result = detectService('https://onedrive.live.com/edit.aspx?resid=123');
+      const result = detectService('https://www.dropbox.com/scl/fi/abc123/test.pdf');
       expect(result).toBeNull();
     });
 
-    it('should detect OneDrive URL', () => {
-      registerService(mockOneDriveHandler);
-      const result = detectService('https://onedrive.live.com/edit.aspx?resid=123');
+    it('should detect Dropbox URL', () => {
+      registerService(mockDropboxHandler);
+      const result = detectService('https://www.dropbox.com/scl/fi/abc123/test.pdf');
 
       expect(result).not.toBeNull();
-      expect(result?.handler).toBe(mockOneDriveHandler);
-      expect(result?.info.service).toBe('onedrive');
+      expect(result?.handler).toBe(mockDropboxHandler);
+      expect(result?.info.service).toBe('dropbox');
     });
 
     it('should detect Google URL', () => {
@@ -109,7 +109,7 @@ describe('Service Registry', () => {
     });
 
     it('should return null for unknown URL', () => {
-      registerService(mockOneDriveHandler);
+      registerService(mockDropboxHandler);
       registerService(mockGoogleHandler);
 
       const result = detectService('https://example.com/file');
@@ -117,11 +117,11 @@ describe('Service Registry', () => {
     });
 
     it('should use first matching handler when multiple registered', () => {
-      registerService(mockOneDriveHandler);
+      registerService(mockDropboxHandler);
       registerService(mockGoogleHandler);
 
-      const result = detectService('https://onedrive.live.com/edit.aspx?resid=123');
-      expect(result?.handler.type).toBe('onedrive');
+      const result = detectService('https://www.dropbox.com/scl/fi/abc123/test.pdf');
+      expect(result?.handler.type).toBe('dropbox');
     });
   });
 
@@ -132,7 +132,7 @@ describe('Service Registry', () => {
     });
 
     it('should return info for all registered services', () => {
-      registerService(mockOneDriveHandler);
+      registerService(mockDropboxHandler);
       registerService(mockGoogleHandler);
 
       const services = getSupportedServices();
@@ -140,13 +140,13 @@ describe('Service Registry', () => {
     });
 
     it('should include correct metadata', () => {
-      registerService(mockOneDriveHandler);
+      registerService(mockDropboxHandler);
 
       const services = getSupportedServices();
       expect(services[0]).toEqual({
-        type: 'onedrive',
-        name: 'OneDrive',
-        displayName: 'OneDrive',
+        type: 'dropbox',
+        name: 'Dropbox',
+        displayName: 'Dropbox',
         supportedFileTypes: [],
       });
     });

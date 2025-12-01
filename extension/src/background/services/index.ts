@@ -1,5 +1,5 @@
 // Service registry for multi-service support
-// Central registry for service handlers (OneDrive, Dropbox, Box, Google)
+// Central registry for service handlers (Google, Dropbox, Box)
 
 import {
   ServiceType,

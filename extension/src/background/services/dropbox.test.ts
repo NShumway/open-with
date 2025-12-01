@@ -57,18 +57,41 @@ describe('DropboxService', () => {
         expect(result).not.toBeNull();
         expect(result?.service).toBe('dropbox');
         expect(result?.isSharedLink).toBe(false);
+        expect(result?.fileType).toBe('xlsx');
+      });
+    });
+
+    describe('preview URLs (dropbox.com/preview/)', () => {
+      it('should detect preview URL with filename', () => {
+        const url = 'https://www.dropbox.com/preview/Resume.docx?context=content_suggestions&role=personal';
+        const result = dropboxService.detect(url);
+        expect(result).not.toBeNull();
+        expect(result?.service).toBe('dropbox');
+        expect(result?.fileId).toBe('Resume.docx');
+        expect(result?.isSharedLink).toBe(false);
+        expect(result?.fileType).toBe('docx');
+      });
+
+      it('should detect preview URL with nested path', () => {
+        const url = 'https://www.dropbox.com/preview/Documents/Reports/Q4-Budget.xlsx';
+        const result = dropboxService.detect(url);
+        expect(result).not.toBeNull();
+        expect(result?.service).toBe('dropbox');
+        expect(result?.isSharedLink).toBe(false);
+        expect(result?.fileType).toBe('xlsx');
+      });
+
+      it('should handle URL-encoded preview paths', () => {
+        const url = 'https://www.dropbox.com/preview/My%20Documents/Report%202024.pdf';
+        const result = dropboxService.detect(url);
+        expect(result).not.toBeNull();
+        expect(result?.fileType).toBe('pdf');
       });
     });
 
     describe('non-matching URLs', () => {
       it('should return null for Google Docs URL', () => {
         const url = 'https://docs.google.com/spreadsheets/d/abc123/edit';
-        const result = dropboxService.detect(url);
-        expect(result).toBeNull();
-      });
-
-      it('should return null for OneDrive URL', () => {
-        const url = 'https://onedrive.live.com/edit.aspx?resid=ABC123';
         const result = dropboxService.detect(url);
         expect(result).toBeNull();
       });

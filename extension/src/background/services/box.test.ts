@@ -85,12 +85,6 @@ describe('BoxService', () => {
         expect(result).toBeNull();
       });
 
-      it('should return null for OneDrive URL', () => {
-        const url = 'https://onedrive.live.com/edit.aspx?resid=ABC123';
-        const result = boxService.detect(url);
-        expect(result).toBeNull();
-      });
-
       it('should return null for Box marketing pages', () => {
         const url = 'https://www.box.com/features';
         const result = boxService.detect(url);
