@@ -47,9 +47,32 @@
         <h1 id="error-title">Error</h1>
       </div>
       <p class="description" id="error-message">Something went wrong.</p>
+      <details id="error-details" class="error-details hidden">
+        <summary>Technical details</summary>
+        <pre id="error-details-content"></pre>
+      </details>
       <div class="buttons">
+        <button id="retry" class="secondary hidden" type="button">Retry</button>
         <button id="dismiss" class="secondary" type="button">Dismiss</button>
       </div>
+    </div>
+
+    <!-- V2 Extracting state -->
+    <div id="extracting" class="hidden" role="status" aria-live="polite" aria-label="Extraction in progress">
+      <div class="header">
+        <div class="spinner" aria-hidden="true"></div>
+        <h1 id="extracting-status">Extracting...</h1>
+      </div>
+      <p class="description" id="extracting-detail">Please wait while we process the page.</p>
+    </div>
+
+    <!-- V2 Success state -->
+    <div id="success" class="hidden" role="status" aria-live="polite">
+      <div class="header">
+        <div class="success-checkmark" aria-hidden="true">✓</div>
+        <h1 id="success-title">Done!</h1>
+      </div>
+      <p class="description" id="success-message">Your file is ready.</p>
     </div>
 
     <!-- Loading state -->
@@ -57,6 +80,34 @@
       <div class="header">
         <img src="../icons/icon48.png" alt="" class="icon" aria-hidden="true">
         <h1>Loading...</h1>
+      </div>
+    </div>
+
+    <!-- V2 Extraction state -->
+    <div id="extraction" class="hidden" role="main" aria-labelledby="extraction-title">
+      <div class="header">
+        <img src="../icons/icon48.png" alt="" class="icon" aria-hidden="true">
+        <h1 id="extraction-title">Extract Content</h1>
+      </div>
+
+      <div id="tables-section" class="section hidden">
+        <h3>Tables (<span id="table-count">0</span>)</h3>
+        <div id="table-preview" class="preview"></div>
+        <button id="extract-xlsx" class="primary" type="button">Download as Excel (.xlsx)</button>
+      </div>
+
+      <div id="text-section" class="section hidden">
+        <h3>Text Content</h3>
+        <div id="text-preview" class="preview"></div>
+        <div class="buttons text-buttons">
+          <button id="extract-docx" class="secondary" type="button">Word (.docx)</button>
+          <button id="extract-txt" class="secondary" type="button">Text (.txt)</button>
+        </div>
+      </div>
+
+      <div id="pdf-section" class="section">
+        <h3>Page</h3>
+        <button id="extract-pdf" class="secondary" type="button">Print to PDF</button>
       </div>
     </div>
   </div>

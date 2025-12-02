@@ -24,10 +24,21 @@ const popupOptions = {
   platform: 'browser',
   sourcemap: true,
   minify: !isWatch,
+  // Polyfill Node.js buffer for docx library
+  inject: ['src/lib/buffer-polyfill.js'],
+  define: {
+    'global': 'globalThis',
+  },
 };
 
 const contentScriptOptions = {
-  entryPoints: ['src/content/scraper.ts', 'src/content/download-trigger.ts'],
+  entryPoints: [
+    'src/content/scraper.ts',
+    'src/content/download-trigger.ts',
+    'src/content/discovery.ts',
+    'src/content/text.ts',
+    'src/content/tables.ts',
+  ],
   bundle: true,
   outdir: 'dist/content',
   format: 'iife',

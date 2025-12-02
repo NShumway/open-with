@@ -146,6 +146,152 @@ button:focus {
   font-weight: 400;
 }
 
+/* Spinner animation */
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e0e0e0;
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Success checkmark */
+.success-checkmark {
+  width: 32px;
+  height: 32px;
+  background-color: #34a853;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: bold;
+  flex-shrink: 0;
+  animation: checkmark-pop 0.3s ease-out;
+}
+
+@keyframes checkmark-pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Extracting state */
+#extracting .header {
+  justify-content: flex-start;
+}
+
+#extracting h1 {
+  color: #1a73e8;
+  font-weight: 500;
+}
+
+/* Success state */
+#success .header {
+  justify-content: flex-start;
+}
+
+#success h1 {
+  color: #34a853;
+  font-weight: 500;
+}
+
+/* Error details */
+.error-details {
+  margin: 8px 0 12px 0;
+}
+
+.error-details summary {
+  cursor: pointer;
+  color: #5f6368;
+  font-size: 12px;
+}
+
+.error-details summary:hover {
+  color: #1a73e8;
+}
+
+.error-details pre {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace;
+  font-size: 11px;
+  background-color: #f8f9fa;
+  padding: 8px;
+  border-radius: 4px;
+  max-height: 80px;
+  overflow: auto;
+  margin-top: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Button disabled state */
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* V2 Extraction state */
+.section {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.section h3 {
+  font-size: 13px;
+  font-weight: 500;
+  color: #202124;
+  margin-bottom: 8px;
+}
+
+.preview {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace;
+  font-size: 11px;
+  color: #5f6368;
+  max-height: 60px;
+  overflow: hidden;
+  background-color: #f8f9fa;
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+
+.section button {
+  width: 100%;
+}
+
+.text-buttons {
+  gap: 8px;
+  justify-content: stretch;
+}
+
+.text-buttons button {
+  flex: 1;
+}
+
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
   body {
@@ -204,6 +350,54 @@ button:focus {
   }
 
   #loading h1 {
+    color: #9aa0a6;
+  }
+
+  /* V2 Extraction dark mode */
+  .section {
+    border-color: #3c4043;
+  }
+
+  .section h3 {
+    color: #e8eaed;
+  }
+
+  .preview {
+    background-color: #303134;
+    color: #9aa0a6;
+  }
+
+  /* Spinner dark mode */
+  .spinner {
+    border-color: #3c4043;
+    border-top-color: #8ab4f8;
+  }
+
+  /* Extracting state dark mode */
+  #extracting h1 {
+    color: #8ab4f8;
+  }
+
+  /* Success state dark mode */
+  #success h1 {
+    color: #81c995;
+  }
+
+  .success-checkmark {
+    background-color: #81c995;
+  }
+
+  /* Error details dark mode */
+  .error-details summary {
+    color: #9aa0a6;
+  }
+
+  .error-details summary:hover {
+    color: #8ab4f8;
+  }
+
+  .error-details pre {
+    background-color: #303134;
     color: #9aa0a6;
   }
 }
